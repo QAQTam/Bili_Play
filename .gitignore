@@ -1,0 +1,87 @@
+# .NET and build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+dist/
+publish/
+packages/
+*.exe
+*.dll
+*.pdb
+*.pri
+*_wpftmp.csproj
+Generated Files/
+
+# IDE and per-user build/publish settings
+.vs/
+.idea/
+_ReSharper*/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.pubxml.user
+*.DotSettings.user
+*.dotCover
+.winapp/
+.codex/
+
+# Build logs, diagnostics and test output
+[Ll]og/
+[Ll]ogs/
+*.log
+*.binlog
+*.dmp
+*.har
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+
+# NuGet generated files; retain packages.lock.json
+*.nupkg
+*.snupkg
+*.nuget.props
+*.nuget.targets
+project.lock.json
+
+# MSIX/AppX generated packages and signing output
+AppPackages/
+BundleArtifacts/
+*.msix
+*.msixbundle
+*.msixupload
+*.appx
+*.appxbundle
+*.appxupload
+*.appxsym
+
+# Private credentials and local environment
+*.pfx
+*.p12
+*.pem
+*.key
+*.p8
+*.dpapi
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Local databases, exported sessions and downloaded subtitles
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+cookies.json
+cookies.txt
+session.json
+session.txt
+*.subtitles.json
+
+# Portable Properties/PublishProfiles/*.pubxml files belong in source control.

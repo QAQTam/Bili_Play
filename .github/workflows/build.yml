@@ -1,0 +1,23 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Protocol and relay tests
+        run: dotnet run --project Tests/BiliPlay.Tests.csproj
+      - name: Restore locked dependencies
+        run: dotnet restore BiliPlay.csproj --locked-mode -p:Platform=x64
+      - name: Build native Windows application
+        run: dotnet build BiliPlay.csproj -c Release -p:Platform=x64 --no-restore
+      - name: Clean generated files
+        if: always()
+        run: .\tools\Clean-Generated.ps1

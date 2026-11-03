@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "BiliPlay (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "BiliPlay (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

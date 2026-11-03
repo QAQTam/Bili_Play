@@ -1,0 +1,89 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>BiliPlay</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon Condition="Exists('Assets\AppIcon.ico')">Assets\AppIcon.ico</ApplicationIcon>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <Version>0.8.1</Version>
+    <AssemblyName>Bili_Play</AssemblyName>
+    <Product>Bili Play</Product>
+    <RepositoryUrl>https://github.com/soda-rx/Bili_Play</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <Title>Bili Play</Title>
+    <DefaultLanguage>zh-CN</DefaultLanguage>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+    <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <EnableVisualChecks Condition="'$(EnableVisualChecks)' == ''">false</EnableVisualChecks>
+    <DevelopmentBuild Condition="'$(DevelopmentBuild)' == '' and '$(WindowsPackageType)' == 'None'">true</DevelopmentBuild>
+    <DevelopmentBuild Condition="'$(DevelopmentBuild)' == ''">false</DevelopmentBuild>
+    <DefineConstants Condition="'$(DevelopmentBuild)' == 'true'">$(DefineConstants);DEVELOPMENT_BUILD</DefineConstants>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**;dist\**</DefaultItemExcludes>
+    <DefineConstants Condition="'$(EnableVisualChecks)' == 'true'">$(DefineConstants);VISUAL_CHECKS</DefineConstants>
+    <AppBuildFlavor>Daily</AppBuildFlavor>
+    <AppBuildFlavor Condition="'$(DevelopmentBuild)' == 'true'">Development</AppBuildFlavor>
+    <AppBuildFlavor Condition="'$(EnableVisualChecks)' == 'true'">VisualTests</AppBuildFlavor>
+    <OutputPath>bin\$(Platform)\$(Configuration)\$(AppBuildFlavor)\</OutputPath>
+  </PropertyGroup>
+
+
+  <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+    <ProjectCapability Include="Msix"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Core\**;Tests\**" />
+    <Page Remove="Core\**;Tests\**" />
+    <ProjectReference Include="Core\BiliPlay.Core.csproj" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.6.4" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="2.6.4" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.7.1" />
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.0" />
+    <PackageReference Include="SQLitePCLRaw.bundle_winsqlite3" Version="2.1.11" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+    <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(EnableVisualChecks)' == 'true'">
+    <Compile Include="Tests\Visual\**\*.cs" />
+    <Content Include="Tests\Visual\Fixtures\cover.png" Link="TestAssets\cover.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- A full MSIX resolves ms-appx paths through its main PRI, unlike an unpackaged app.
+       Include the bundled WinUI indexes in that PRI instead of only shipping them beside it. -->
+  <Target Name="IncludeBundledWinUIResourceIndexes"
+          AfterTargets="_ComputeInputPriFiles"
+          BeforeTargets="_GenerateProjectPriConfigurationFiles"
+          Condition="'$(WindowsAppSDKSelfContained)' == 'true' and '$(WindowsPackageType)' != 'None'"
+          DependsOnTargets="AddMicrosoftWindowsAppSDKPayloadFilesFromComponents">
+    <ItemGroup>
+      <_PriFile Include="@(MicrosoftWindowsAppSDKFilesRes)" KeepDuplicates="false" />
+    </ItemGroup>
+  </Target>
+
+  <PropertyGroup>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+</Project>

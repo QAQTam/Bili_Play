@@ -1,0 +1,14 @@
+﻿<UserControl x:Class="BiliPlay.NowPlayingIndicator"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="28" Height="28" IsTabStop="False">
+ <Button x:Name="WaveButton" Width="28" Height="28" Padding="5" CornerRadius="4"
+  Style="{StaticResource SubtleButtonStyle}" Visibility="Collapsed" Click="WaveClick"
+  Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}">
+  <StackPanel x:Name="Bars" Orientation="Horizontal" Spacing="2" Height="16" VerticalAlignment="Center">
+   <Border Width="2" Height="8" CornerRadius="1" Background="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
+   <Border Width="2" Height="16" CornerRadius="1" Background="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
+   <Border Width="2" Height="12" CornerRadius="1" Background="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
+   <Border Width="2" Height="6" CornerRadius="1" Background="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
+  </StackPanel>
+ </Button>
+</UserControl>
