@@ -1,6 +1,7 @@
 <div align="center">
 
-<img width="72" height="72" alt="Square44x44Logo targetsize-72" src="https://github.com/user-attachments/assets/9781554d-9aa4-412d-a21b-34292205de44" />
+<img width="88" height="88" alt="Square44x44Logo scale-200" src="https://github.com/user-attachments/assets/58beae1f-b003-4595-a8e0-f15ac427cc83" />
+
 
 # Bili Play
 
