@@ -1,4 +1,4 @@
-﻿using BiliPlay.Core;
+using BiliPlay.Core;
 
 namespace BiliPlay.ViewModels;
 
@@ -14,6 +14,7 @@ public partial class PlayerViewModel
     }
     private async Task LoadHomePageAsync(bool refreshFirstPage)
     {
+        if(BiliPlay.Services.DebugSession.IsActive) {Replace(Tracks,_homeCache);HasMore=false;IsEmpty=Tracks.Count==0;return;}
         if(_disposed||!IsHomeView||Client.Account is not { } account) return;
         _browse??=new();var version=_browseVersion;var token=_browse.Token;
         var page=refreshFirstPage?1:_regionPage+1;

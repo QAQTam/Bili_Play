@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:BiliPlay"
+    xmlns:core="using:BiliPlay.Core"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Title="Bili Play"
     mc:Ignorable="d">
@@ -57,13 +58,19 @@
                     <Popup x:Name="SearchHistoryPopup" VerticalOffset="38" IsLightDismissEnabled="False" ShouldConstrainToRootBounds="True">
                         <Popup.ChildTransitions><TransitionCollection><PopupThemeTransition/></TransitionCollection></Popup.ChildTransitions>
                         <Border Width="{Binding ActualWidth, ElementName=SearchHost}" Padding="4" CornerRadius="8" Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1">
-                            <ScrollViewer MaxHeight="360" HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled">
+                            <ScrollViewer MaxHeight="480" HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled">
+                                <StackPanel Spacing="4">
                                 <ItemsControl x:Name="SearchHistoryItems" HorizontalContentAlignment="Stretch">
                                     <ItemsControl.ItemTemplate><DataTemplate><Grid ColumnSpacing="4"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions>
                                         <Button Tag="{Binding}" Click="SearchHistoryQueryClick" Style="{StaticResource SubtleButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="36"><TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/></Button>
                                         <Button Grid.Column="1" Width="32" Height="32" Padding="8" Tag="{Binding}" Click="DeleteSearchHistoryClick" Style="{StaticResource SubtleButtonStyle}" AutomationProperties.Name="删除这条搜索历史" ToolTipService.ToolTip="删除"><FontIcon Glyph="&#xE711;" FontSize="12"/></Button>
                                     </Grid></DataTemplate></ItemsControl.ItemTemplate>
                                 </ItemsControl>
+                                <TextBlock x:Name="SearchKeywordHeading" Text="搜索建议" Margin="8,8,8,4" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed"/>
+                                <ItemsControl x:Name="SearchKeywordItems"><ItemsControl.ItemTemplate><DataTemplate><Button Tag="{Binding}" Content="{Binding}" Click="SearchHistoryQueryClick" Style="{StaticResource SubtleButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="36"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                <TextBlock x:Name="SearchSongHeading" Text="相关歌曲" Margin="8,8,8,4" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed"/>
+                                <ItemsControl x:Name="SearchSongItems"><ItemsControl.ItemTemplate><DataTemplate><Button Tag="{Binding}" Click="SearchSuggestedSongClick" Style="{StaticResource SubtleButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="8,6"><Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="24"/></Grid.ColumnDefinitions><local:CenteredCover Width="40" Height="40" CornerRadius="4" Source="{Binding Thumbnail, Converter={StaticResource SocialAvatar}, ConverterParameter=128}"/><StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3"><TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding UploaderDisplay}" FontSize="12" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel><FontIcon Grid.Column="2" Glyph="&#xE768;" FontSize="14" VerticalAlignment="Center"/></Grid></Button></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                </StackPanel>
                             </ScrollViewer>
                         </Border>
                     </Popup>
@@ -77,6 +84,7 @@
                     <Button.Flyout>
                         <Flyout x:Name="AccountFlyout" Placement="BottomEdgeAlignedRight" Opening="AccountFlyoutOpening" Closed="AccountFlyoutClosed">
                             <StackPanel Width="256" Spacing="20" Padding="8,12,8,8">
+                                <StackPanel Spacing="10" Visibility="{x:Bind ViewModel.DebugModeVisibility, Mode=OneWay}"><TextBlock Text="离线调试 · 数据仅本次有效" TextWrapping="Wrap"/><Button Content="退出调试" Click="ExitDebugModeClick" HorizontalAlignment="Stretch"/></StackPanel>
                                 <StackPanel Spacing="18" Visibility="{x:Bind ViewModel.LibraryVisibility, Mode=OneWay}">
                                     <Grid Width="112" Height="112" HorizontalAlignment="Center">
                                         <PersonPicture Width="104" Height="104" HorizontalAlignment="Left" VerticalAlignment="Top" ProfilePicture="{x:Bind ViewModel.AccountLargeAvatar, Mode=OneWay}"/>
@@ -98,7 +106,7 @@
                                         <Button Grid.Column="1" Content="{x:Bind ViewModel.FollowersLabel, Mode=OneWay}" Tag="followers" Click="SocialListClick" HorizontalAlignment="Stretch"/>
                                     </Grid>
                                     <Button Content="重新登录" Click="ReLoginClick" Visibility="{x:Bind ViewModel.ReLoginVisibility, Mode=OneWay}" HorizontalAlignment="Stretch"/>
-                                    <Button Content="退出登录" Click="LogoutClick" HorizontalAlignment="Stretch" Margin="0,8,0,0"/>
+                                    <Button Content="退出登录" Click="LogoutClick" Visibility="{x:Bind ViewModel.AccountLogoutVisibility, Mode=OneWay}" HorizontalAlignment="Stretch" Margin="0,8,0,0"/>
                                 </StackPanel>
                                 <TextBlock Text="请使用手机哔哩哔哩扫码登录。" TextWrapping="Wrap" Visibility="{x:Bind ViewModel.LoginVisibility, Mode=OneWay}" />
                             </StackPanel>

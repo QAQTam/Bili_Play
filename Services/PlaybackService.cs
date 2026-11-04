@@ -139,6 +139,7 @@ internal sealed class PlaybackEngine : IDisposable
     }
     private double _fallbackPosition;
     private bool _pageRetried;
+    private bool _disposed;
     public string Quality => _stream?.Quality ?? (Current?.LocalFile.Length > 0 ? "MP3" : "");
     public Track? Current { get; private set; }
     public bool Playing => _player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
@@ -168,6 +169,7 @@ internal sealed class PlaybackEngine : IDisposable
         _controls.IsNextEnabled = true; _controls.IsPreviousEnabled = true;
         _controls.ButtonPressed += (_, e) => _dispatcher.TryEnqueue(() =>
         {
+            if (_disposed) return;
             switch (e.Button)
             {
                 case SystemMediaTransportControlsButton.Play: PlaybackRequested?.Invoke(true); break;
@@ -176,11 +178,12 @@ internal sealed class PlaybackEngine : IDisposable
                 case SystemMediaTransportControlsButton.Previous: SkipRequested?.Invoke(false); break;
             }
         });
-        _controls.PlaybackPositionChangeRequested += (_, e) => _dispatcher.TryEnqueue(() => Seek(e.RequestedPlaybackPosition.TotalSeconds));
+        _controls.PlaybackPositionChangeRequested += (_, e) => _dispatcher.TryEnqueue(() => { if (!_disposed) Seek(e.RequestedPlaybackPosition.TotalSeconds); });
         WirePlayer(_player);
     }
     private void PublishPlaybackState()
     {
+        if (_disposed) return;
         _controls.PlaybackStatus = _player.PlaybackSession.PlaybackState switch
         {
             MediaPlaybackState.Playing => MediaPlaybackStatus.Playing,
@@ -193,13 +196,13 @@ internal sealed class PlaybackEngine : IDisposable
     private void WirePlayer(MediaPlayer player)
     {
         player.PlaybackSession.PlaybackStateChanged += (_, _) => _dispatcher.TryEnqueue(() =>
-        { if (ReferenceEquals(player, _player)) PublishPlaybackState(); });
+        { if (!_disposed && ReferenceEquals(player, _player)) PublishPlaybackState(); });
         player.MediaOpened += (_, _) => _dispatcher.TryEnqueue(() =>
-        { if (!ReferenceEquals(player, _player)) return; if (_fallbackPosition > 0) { Seek(_fallbackPosition); _fallbackPosition = 0; } if (!_resumeAfterOpen) _player.Pause(); Changed?.Invoke(); });
-        player.MediaEnded += (_, _) => _dispatcher.TryEnqueue(() => { if (ReferenceEquals(player, _player)) Ended?.Invoke(); });
+        { if (_disposed || !ReferenceEquals(player, _player)) return; if (_fallbackPosition > 0) { Seek(_fallbackPosition); _fallbackPosition = 0; } if (!_resumeAfterOpen) _player.Pause(); Changed?.Invoke(); });
+        player.MediaEnded += (_, _) => _dispatcher.TryEnqueue(() => { if (!_disposed && ReferenceEquals(player, _player)) Ended?.Invoke(); });
         player.MediaFailed += (_, _) => _dispatcher.TryEnqueue(() =>
         {
-            if (!ReferenceEquals(player, _player)) return;
+            if (_disposed || !ReferenceEquals(player, _player)) return;
             if (_stream?.Fallback is { } fallback && Current is not null)
             {
                 _fallbackPosition = Position; _resumeAfterOpen = Playing;
@@ -297,6 +300,8 @@ internal sealed class PlaybackEngine : IDisposable
     }
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         Stop(); _controls.IsEnabled = false; _load?.Dispose(); _audio.Dispose();
     }
 }

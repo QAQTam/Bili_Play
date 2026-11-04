@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -67,6 +67,7 @@ public static partial class Text
     public static string CoverImage(string value, int width)
     {
         if (string.IsNullOrWhiteSpace(value)) return "";
+        if (Uri.TryCreate(value,UriKind.Absolute,out var local) && local.IsFile) return value;
         return value.Split('@')[0] + $"@{width}w.webp";
     }
     public static string Clean(string value) => WebUtility.HtmlDecode(Tags().Replace(value, "")).Trim();

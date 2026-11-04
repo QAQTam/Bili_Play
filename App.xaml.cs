@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 
 namespace BiliPlay;
 public partial class App : Application
@@ -26,6 +26,7 @@ public partial class App : Application
     {
         UnhandledException += (_, e) =>
         {
+            if(Services.DebugSession.IsActive)return;
             try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "startup-error.log"), $"{DateTimeOffset.Now:O} {e.Exception}\n"); }
             catch (System.IO.IOException) { }
             catch (UnauthorizedAccessException) { }
@@ -34,6 +35,7 @@ public partial class App : Application
     }
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
+        if(!IsVisualCheck) Services.DebugSession.CleanAbandoned();
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         _instance = new(() => DispatcherQueue.TryEnqueue(() =>
         {

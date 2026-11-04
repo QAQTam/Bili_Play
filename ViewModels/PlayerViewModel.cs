@@ -30,7 +30,7 @@ public sealed class ToastNotice(string message, NoticeLevel severity)
 public partial class PlayerViewModel : ObservableObject, IDisposable
 {
     public BilibiliClient Client { get; }
-    public LocalStore Store { get; } = new(App.IsVisualCheck ? Path.Combine(App.VisualCheckDirectory!, "data") : null);
+    public LocalStore Store { get; } = new(DebugSession.DirectoryPath ?? (App.IsVisualCheck ? Path.Combine(App.VisualCheckDirectory!, "data") : null), DebugSession.IsActive);
     public PlaybackService Player { get; }
     public ObservableCollection<Folder> Folders { get; } = [];
     public IncrementalCollection<Track> Tracks { get; } = [];
@@ -276,7 +276,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     public void PauseForTray() => Player.Pause();
     [ObservableProperty] public partial string CacheDirectory { get; set; } = "";
     partial void OnCacheDirectoryChanged(string value) { if (!string.IsNullOrWhiteSpace(value)) Store.SetSetting("cacheDirectory", value); }
-    public static bool IsOnline => Windows.Networking.Connectivity.NetworkInformation.GetInternetConnectionProfile()?.GetNetworkConnectivityLevel()
+    public static bool IsOnline => !DebugSession.IsActive && Windows.Networking.Connectivity.NetworkInformation.GetInternetConnectionProfile()?.GetNetworkConnectivityLevel()
         == Windows.Networking.Connectivity.NetworkConnectivityLevel.InternetAccess;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanGoBack))]
@@ -344,7 +344,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         ct.ThrowIfCancellationRequested();
         if (HasMore && IsLoggedIn) await LoadMoreCommand.ExecuteAsync(null);
     }
-    public PlayerViewModel() : this(new BilibiliClient()) { }
+    public PlayerViewModel() : this(new BilibiliClient(DebugSession.IsActive ? new DebugSession.OfflineHandler() : null)) { }
     internal PlayerViewModel(BilibiliClient client)
     {
         Client = client;
@@ -367,7 +367,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         RecordRecentPlays = Store.RecordRecentPlays;
         CloseToTray = Store.GetSetting("closeToTray", "true") != "false";
         CloseBehaviorIndex = int.TryParse(Store.GetSetting("closeBehavior", CloseToTray ? "0" : "1"), out var behavior) ? behavior : 0;
-        var savedDirectory = Store.GetSetting("cacheDirectory", DownloadService.CacheDirectory(0));
+        var savedDirectory = Store.GetSetting("cacheDirectory", DebugSession.DirectoryPath is { } debugRoot ? Path.Combine(debugRoot,"downloads") : DownloadService.CacheDirectory(0));
         var previousDefault = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic, Environment.SpecialFolderOption.DoNotVerify);
         CacheDirectory = string.Equals(savedDirectory.TrimEnd(Path.DirectorySeparatorChar), previousDefault.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
             ? DownloadService.CacheDirectory(0) : savedDirectory;
@@ -399,6 +399,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     }
     public async Task InitializeAsync()
     {
+        if (DebugSession.IsActive) { await InitializeDebugAsync(); return; }
         _login?.Cancel();
         LoginLoading = true; LoginStatus = "正在连接哔哩哔哩…";
         var cookies = SessionVault.Read();
@@ -480,8 +481,8 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         IsLoggedIn = true; AccountName = Client.Account!.Name; QrImage = null; LoginLoading = false;
         AccountUid = Client.Account.Id.ToString(); AccountLevel = $"Lv.{Client.Account.Level}";
         Replace(SearchHistory, Store.SearchHistory(Client.Account!.Id));
-        AccountAvatar = Uri.TryCreate(Client.Account.Avatar, UriKind.Absolute, out var avatar) ? new BitmapImage(avatar) { DecodePixelWidth = 80 } : null;
-        AccountLargeAvatar = avatar is not null ? new BitmapImage(new Uri(avatar.GetLeftPart(UriPartial.Path).Split('@')[0] + "@320w_320h_1c.webp")) { DecodePixelWidth = 320 } : null;
+        AccountAvatar = Uri.TryCreate(Client.Account.Avatar, UriKind.Absolute, out var avatar) ? ArtworkCache.Create(avatar,80) : null;
+        AccountLargeAvatar = avatar is not null ? ArtworkCache.Create(new Uri(avatar.GetLeftPart(UriPartial.Path).Split('@')[0] + "@320w_320h_1c.webp"),320) : null;
         IsVip = Client.Account.IsVip;
         var accountChanged=_queueAccount!=Client.Account.Id;
         if (accountChanged && Client.Account.Id > 0)
@@ -578,6 +579,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     }
     public async Task RefreshFoldersAsync()
     {
+        if(DebugSession.IsActive)return;
         StopFolderPreviews();
         var version = ++_foldersVersion;
         var account = Client.Account!.Id;
@@ -619,6 +621,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     {
         Navigate("folder"); SelectedFolder = folder;
         PageTitle = folder.Title; 
+        if(DebugSession.IsActive){Replace(Tracks,_homeCache);HasMore=false;IsEmpty=Tracks.Count==0;return;}
         Tracks.Clear(); _page = 1;
         _browse = new(); var version = _browseVersion;
         var result = await Client.GetFolderTracksAsync(folder.Id, 1, _browse.Token);
@@ -632,6 +635,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(SearchText)) { Navigate("search"); return; }
         var text = SearchText.Trim();
+        if(DebugSession.IsActive){Navigate("search");Replace(Tracks,_homeCache.Where(t=>t.Title.Contains(text,StringComparison.OrdinalIgnoreCase)||t.Uploader.Contains(text,StringComparison.OrdinalIgnoreCase)));IsEmpty=Tracks.Count==0;return;}
         if (remember) Store.RememberSearch(Client.Account!.Id, text);
         Replace(SearchHistory, Store.SearchHistory(Client.Account!.Id));
         if (remember) Navigate("search");
@@ -736,7 +740,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         {
             Video? video = null;
             var isCached = DownloadService.IsCached(account.Id, selected);
-            if (IsOnline || !isCached)
+            if (!DebugSession.IsActive && (IsOnline || !isCached))
             {
                 try { video = await Client.GetVideoAsync(selected.Bvid, selected.Aid, _lifetime.Token); }
                 catch (Exception error) when (isCached && error is not OperationCanceledException) { /* Keep offline audio playable. */ }
@@ -1070,6 +1074,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     { if (Client.Account is { } account) { Store.DeleteSearch(account.Id, query); SearchHistory.Remove(query); } }
     public async Task ReauthenticateAsync()
     {
+        if(DebugSession.IsActive)return;
         _selectionVersion++; CancelDownloads(); SaveProgress(); _playVersion++; Player.Stop(); ShowQueue = false; SessionVault.Clear(); Client.ClearSession(); NeedsLogin = false; IsLoggedIn = false;
         await LoginAsync();
     }
@@ -1080,6 +1085,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
             .Any(item=>QueueSelection.Same(item,track)&&DownloadService.IsCached(account.Id,item)));
     public Task DownloadAsync(Track track) => SafeAsync(async () =>
     {
+        if(DebugSession.IsActive){Notify("离线调试不下载真实音源。",NoticeLevel.Info);return;}
         var account = Client.Account!.Id;
         if (Store.ReadTracks($"downloads:{account}").Any(item => QueueSelection.Same(item, track) && DownloadService.IsCached(account, item)))
         { Notify("这首音乐已经下载，可在下载页面查看。", NoticeLevel.Info); return; }
@@ -1199,8 +1205,8 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
             _ = RefreshFavoriteStateAsync();
             _currentUploader = 0; IsFollowingUploader = false; CanFollowUploader = false;
             _ = LoadUploaderRelationAsync(track);
-            CurrentCover = Uri.TryCreate(Text.CoverImage(track?.Cover ?? "", 512), UriKind.Absolute, out var cover) ? new BitmapImage(cover) { DecodePixelWidth = 512 } : null;
-            LyricsCover = Uri.TryCreate(track?.Artwork, UriKind.Absolute, out var artwork) ? new BitmapImage(artwork) { DecodePixelWidth = 960 } : null;
+            CurrentCover = Uri.TryCreate(Text.CoverImage(track?.Cover ?? "", 512), UriKind.Absolute, out var cover) ? ArtworkCache.Create(cover,512) : null;
+            LyricsCover = Uri.TryCreate(track?.Artwork, UriKind.Absolute, out var artwork) ? ArtworkCache.Create(artwork,960) : null;
             if (track is not null && Client.Account is { Id: > 0 } account)
                 Store.SetSetting($"queueCurrent:{account.Id}", $"{track.Bvid}:{track.Page}");
         }
@@ -1300,6 +1306,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task LogoutAsync()
     {
+        if(DebugSession.IsActive){App.Window.Close();return;}
         var dialog = new ContentDialog
         {
             XamlRoot = App.Window.Content.XamlRoot, Title = "退出账号？", Content = "将停止播放并清除这台电脑保存的登录凭据。",

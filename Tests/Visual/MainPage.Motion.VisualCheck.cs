@@ -1,4 +1,4 @@
-﻿using System.Collections.Specialized;
+using System.Collections.Specialized;
 using System.Numerics;
 using BiliPlay.Core;
 using BiliPlay.ViewModels;
@@ -37,6 +37,7 @@ public sealed partial class MainPage
             {
                 ViewModel.HomeGridMode=grid;ViewModel.FolderGridMode=grid;ViewModel.FolderTracksGridMode=grid;
                 ViewModel.Navigate(view);
+                Check(ElementCompositionPreview.GetElementVisual(BrowseSurface).Opacity==0,$"{view} 切换后在动画排队前暴露了完成态");
                 if(view is not ("settings" or "library" or "playlist")) {ViewModel.Tracks.Clear();ViewModel.Tracks.Add(song);}
                 ViewModel.IsEmpty=false;await Task.Delay(80);UpdateLayout();await Task.Delay(40);
                 Check(_browseMotionElements.Contains(BrowseSurface),$"{view} 没有页面入场动画");
@@ -48,7 +49,12 @@ public sealed partial class MainPage
                 await Task.Delay(25);
                 Check(version==_browseTransition&&count==_browseMotionElements.Count,"切歌或增量加载重播了整页动画");
             }
-            _forceReducedMotion=true;ViewModel.Navigate("settings");await Task.Delay(60);
+            ViewModel.Navigate("settings");ViewModel.Navigate("library");ViewModel.Navigate("playlist");
+            Check(ElementCompositionPreview.GetElementVisual(BrowseSurface).Opacity==0,"连续切页暴露了未初始化的新页面");
+            await Task.Delay(650);
+            Check(ViewModel.IsPlaylistView&&ElementCompositionPreview.GetElementVisual(BrowseSurface).Opacity==1,"旧入场回调覆盖新页面或页面未恢复显示");
+            _forceReducedMotion=true;ViewModel.Navigate("settings");
+            Check(ElementCompositionPreview.GetElementVisual(BrowseSurface).Opacity==1,"减少动画模式短暂隐藏了页面");await Task.Delay(60);
             Check(ElementCompositionPreview.GetElementVisual(BrowseSurface).Opacity==1,"减少动画模式仍隐藏页面");
         }
         finally

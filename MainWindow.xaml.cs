@@ -47,7 +47,7 @@ public sealed partial class MainWindow : Window
         SearchHost.LostFocus += SearchLostFocus;
         SearchHistoryPopup.Child.LostFocus += SearchLostFocus;
         ViewModel.BrowseChanged += CloseSearchHistory;
-        ViewModel.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(ViewModel.IsLoggedIn) && !ViewModel.IsLoggedIn) CloseSearchHistory(); };
+        ViewModel.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(ViewModel.IsLoggedIn) && !ViewModel.IsLoggedIn) { CloseSearchHistory(); _suggestionsCache.Clear(); } };
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var scale = GetDpiForWindow(hwnd) / 96.0;
         var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary).WorkArea;
@@ -57,13 +57,13 @@ public sealed partial class MainWindow : Window
         Activated += (_, args) =>
         {
             if (args.WindowActivationState == WindowActivationState.Deactivated) CloseSearchHistory();
-            page.SetPresentationActive(args.WindowActivationState != WindowActivationState.Deactivated); if (!App.IsVisualCheck && args.WindowActivationState != WindowActivationState.Deactivated && ViewModel.IsLoggedIn) _ = ViewModel.RefreshFavoriteStateAsync(); };
+            if(RootFrame.Content is MainPage activePage) activePage.SetPresentationActive(args.WindowActivationState != WindowActivationState.Deactivated); if (!App.IsVisualCheck && args.WindowActivationState != WindowActivationState.Deactivated && ViewModel.IsLoggedIn) _ = ViewModel.RefreshFavoriteStateAsync(); };
         AppWindow.Closing += (_, e) =>
         {
-            if (!_exitRequested && page.ViewModel.IsLoggedIn && page.ViewModel.CloseToTray && _tray?.Available == true)
+            if (!_exitRequested && !DebugSession.IsActive && ViewModel.IsLoggedIn && ViewModel.CloseToTray && _tray?.Available == true)
             { SaveWindowPlacement(); if (ViewModel.CloseBehaviorIndex == 2) ViewModel.PauseForTray(); e.Cancel = true; AppWindow.Hide(); }
         };
-        Closed += (_, _) => { SaveWindowPlacement(); _placementTimer?.Stop(); _tray?.Dispose(); page.ViewModel.Dispose(); };
+        Closed += (_, _) => { CancelSearchRecommendations(); _suggestionsCache.Clear(); SaveWindowPlacement(); _placementTimer?.Stop(); _tray?.Dispose(); try {ViewModel.Dispose();} finally {ArtworkCache.ResetScope();DebugSession.End();} };
     }
     public void ShowMainWindow()
     {
@@ -136,11 +136,12 @@ public sealed partial class MainWindow : Window
         if (ViewModel is null || !ViewModel.IsLoggedIn || _historySuppressed || TitleSearch.Text.Trim() == _submittedSearchText) return;
         var suggestions = ViewModel.SearchHistory.Where(s => s.Contains(TitleSearch.Text.Trim(), StringComparison.OrdinalIgnoreCase)).ToArray();
         SearchHistoryItems.ItemsSource = suggestions;
-        SearchHistoryPopup.IsOpen = suggestions.Length > 0;
+        RequestSearchRecommendations(TitleSearch.Text.Trim());
     }
     private void CloseSearchHistory()
     {
         _historySuppressed = true;
+        CancelSearchRecommendations();
         SearchHistoryPopup.IsOpen = false;
         TitleSearch.IsSuggestionListOpen = false;
     }

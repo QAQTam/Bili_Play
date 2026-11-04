@@ -135,6 +135,10 @@ public sealed partial class MainWindow
         Require(!SearchHistoryPopup.IsOpen && !TitleSearch.IsSuggestionListOpen,"搜索完成后延迟输入／焦点事件重开了历史框");
         TitleSearch.Text = query[..^1]; RequestSearchSuggestions(); await Task.Delay(40);
         Require(SearchHistoryPopup.IsOpen,"真正修改搜索词后不能查看历史");
+        _historySuppressed=false;_keywordSuggestions=["晴天 周杰伦","晴天 现场"];
+        _songSuggestions=[new Track(71,"BV7xx411c7mD","晴天","测试 UP","",240,71)];SetSearchRecommendationItems();await Task.Delay(60);
+        Require(SearchHistoryPopup.IsOpen&&SearchKeywordItems.Items.Count==2&&SearchSongItems.Items.Count==1,"联想和相关歌曲没有显示在搜索弹层");
+        CloseSearchHistory();Require(!SearchHistoryPopup.IsOpen,"关闭后联想弹层仍挡住页面");
         CloseSearchHistory(); ViewModel.Notifications.Clear();
         ViewModel.Navigate("playlist"); await Task.Delay(60);
         Require(!SearchHistoryPopup.IsOpen, "页面切换后残留搜索历史");

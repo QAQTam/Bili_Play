@@ -886,6 +886,54 @@ tests.Add(("Comment replies send the root and immediate parent exactly once",asy
  await Throws<ArgumentException>(()=>client.PostCommentAsync(71,"hello",root:100));Equal(1,writes);
 }));
 
+
+tests.Add(("Artwork cache coalesces, survives restart, clears without touching unrelated files",async()=>
+{
+ var folder=Path.Combine(Path.GetTempPath(),"biliplay-cache-test-"+Guid.NewGuid().ToString("N"));var calls=0;
+ try
+ {
+  using var cache=new ImageDiskCache(folder,new Handler(async r=>{Interlocked.Increment(ref calls);True(!r.Headers.Contains("Cookie"));await Task.Delay(30);return new(HttpStatusCode.OK){Content=new ByteArrayContent([137,80,78,71,13,10,26,10,0,0,0,0,1])};}));
+  var uri=new Uri("https://i0.hdslb.com/test.png");var paths=await Task.WhenAll(Enumerable.Range(0,8).Select(_=>cache.GetAsync(uri)));Equal(1,calls);True(paths.All(path=>path==paths[0]&&File.Exists(path)));
+  using(var restarted=new ImageDiskCache(folder,new Handler(_=>Task.FromException<HttpResponseMessage>(new Exception("Unexpected network")))))Equal(paths[0],await restarted.GetAsync(uri));
+  var unrelated=Path.Combine(folder,"keep.txt");await File.WriteAllTextAsync(unrelated,"fixture");await cache.ClearAsync();True(!Directory.EnumerateFiles(folder,"*.img").Any());True(File.Exists(unrelated));
+  True(await cache.GetAsync(new Uri("https://127.0.0.1/private")) is null);Equal(1,calls);
+  await cache.GetAsync(uri);Equal(2,calls);
+ }
+ finally {if(Directory.Exists(folder))Directory.Delete(folder,true);}
+}));
+tests.Add(("Clearing artwork cache prevents in-flight downloads from repopulating it",async()=>
+{
+ var folder=Path.Combine(Path.GetTempPath(),"biliplay-cache-test-"+Guid.NewGuid().ToString("N"));var entered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var release=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+ try
+ {
+  using var cache=new ImageDiskCache(folder,new Handler(async _=>{entered.TrySetResult();await release.Task;return new(HttpStatusCode.OK){Content=new ByteArrayContent([137,80,78,71,13,10,26,10,0,0,0,0])};}));
+  var pending=cache.GetAsync(new Uri("https://i0.hdslb.com/pending.png"));await entered.Task;await cache.ClearAsync();release.TrySetResult();True(await pending is null);True(!Directory.EnumerateFiles(folder).Any());
+ }
+ finally {release.TrySetResult();if(Directory.Exists(folder))Directory.Delete(folder,true);}
+}));
+tests.Add(("Search keyword suggestions preserve real text, remove markup and deduplicate",async()=>
+{
+ using var client=new BilibiliClient(new Handler(request=>{Equal("s.search.bilibili.com",request.RequestUri!.Host);Equal("晴天",Text.ParseQuery(request.RequestUri.Query)["term"]);return Json("""{"code":0,"result":{"tag":[{"value":"<em>晴天</em> 周杰伦"},{"value":"晴天 周杰伦"},{"value":"晴天 现场"}]}}""");}));
+ var items=await client.GetSearchSuggestionsAsync("晴天");Equal(2,items.Count);Equal("晴天 周杰伦",items[0]);
+}));
+
+
+tests.Add(("Temporary debug sessions delete only owned data and skip active or unrelated folders",async()=>
+{
+ var parent=Path.Combine(Path.GetTempPath(),"biliplay-session-test-"+Guid.NewGuid().ToString("N"));
+ try
+ {
+  var unrelated=Path.Combine(parent,"keep");Directory.CreateDirectory(unrelated);await File.WriteAllTextAsync(Path.Combine(unrelated,"data"),"keep");
+  string owned;
+  using(var session=new TemporarySession(parent))
+  {owned=session.DirectoryPath;await File.WriteAllTextAsync(Path.Combine(owned,"state.json"),"fixture");TemporarySession.CleanAbandoned(parent);True(Directory.Exists(owned));}
+  True(!Directory.Exists(owned));True(File.Exists(Path.Combine(unrelated,"data")));
+  var abandoned=Path.Combine(parent,Guid.NewGuid().ToString("N"));Directory.CreateDirectory(abandoned);await File.WriteAllTextAsync(Path.Combine(abandoned,".biliplay-demo"),"");
+  TemporarySession.CleanAbandoned(parent);True(!Directory.Exists(abandoned));True(Directory.Exists(unrelated));
+ }
+ finally {if(Directory.Exists(parent))Directory.Delete(parent,true);}
+}));
+
 var failures = 0;
 foreach(var test in tests)
 {

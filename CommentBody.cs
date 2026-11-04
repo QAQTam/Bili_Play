@@ -1,4 +1,4 @@
-﻿using BiliPlay.Core;
+using BiliPlay.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
@@ -27,7 +27,7 @@ public sealed class CommentBody : UserControl
             if(match.Index>cursor) paragraph.Inlines.Add(new Run { Text=text[cursor..match.Index] });
             if(Uri.TryCreate(match.Item.Url,UriKind.Absolute,out var uri) && uri.Scheme=="https" && Text.IsMediaHost(uri))
             {
-                var image=new Image { Width=24,Height=24,Source=new BitmapImage(uri) { DecodePixelWidth=64 },Margin=new(1,0,1,0),VerticalAlignment=VerticalAlignment.Bottom };
+                var image=new Image { Width=24,Height=24,Source=BiliPlay.Services.ArtworkCache.Create(uri,64),Margin=new(1,0,1,0),VerticalAlignment=VerticalAlignment.Bottom };
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(image,match.Item.Text);
                 paragraph.Inlines.Add(new InlineUIContainer { Child=image });
             }

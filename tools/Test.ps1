@@ -1,4 +1,4 @@
-param([switch]$Visual)
+﻿param([switch]$Visual)
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Push-Location $taskRoot
@@ -32,6 +32,7 @@ try {
             if (-not (Test-Path -LiteralPath $resultFile)) { throw '没有界面测试结果，请先关闭工作区中运行的应用。' }
             $result = Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json
             if (-not $result.Success) { throw $result.Error }
+            if ($process.ExitCode -ne 0) { throw "界面测试进程异常退出：$($process.ExitCode)" }
             Write-Output 'PASS native WinUI visual regression'
         } finally { $process.Dispose() }
     }

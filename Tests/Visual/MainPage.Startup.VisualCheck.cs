@@ -84,7 +84,8 @@ public sealed partial class MainPage
             Check(ViewModel.CanChooseView&&ViewModel.IsUploaderGridView&&!ViewModel.IsUploaderListView,"UP 主图标视图切换失败");
             ViewModel.SearchGridMode=false;Check(ViewModel.IsUploaderListView&&!ViewModel.IsUploaderGridView,"UP 主列表视图切换失败");ViewModel.SearchCategoryIndex=0;
             ViewModel.Navigate("settings");
-            Check(SettingsOptions.Children.SequenceEqual(new UIElement[]{AppThemeBox,CloseBehaviorBox,RecordHistorySwitch,SingleClickBehaviorBox,DoubleClickBehaviorBox,DownloadFolderSetting}),"设置顺序不符合要求");
+            await BiliPlay.Services.ArtworkCache.ClearAsync();Check(ClearImageCacheButton.Content as string=="清除缓存","图片缓存入口缺失");
+            Check(SettingsOptions.Children.SequenceEqual(new UIElement[]{AppThemeBox,CloseBehaviorBox,RecordHistorySwitch,SingleClickBehaviorBox,DoubleClickBehaviorBox,DownloadFolderSetting,ImageCacheSetting}),"设置顺序不符合要求");
             Check(RecordHistorySwitch.Header as string=="记录历史"&&ViewModel.AppVersion==AboutVersion.Text&&Version.TryParse(AboutVersion.Text,out _),"关于信息版本或记录历史文案不正确");
             Check(AuthorGitHubLink.NavigateUri.AbsoluteUri=="https://github.com/soda-rx"&&ProjectGitHubLink.NavigateUri.AbsoluteUri=="https://github.com/soda-rx/Bili_Play","关于中的 GitHub 链接不正确");
             SettingsScroller.ChangeView(null,SettingsScroller.ScrollableHeight,null,true);await Task.Delay(80);UpdateLayout();

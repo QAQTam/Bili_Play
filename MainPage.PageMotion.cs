@@ -41,7 +41,7 @@ public sealed partial class MainPage
     private void InitializeBrowseMotion()
     {
         Loaded+=(_,_)=>_browseMotionUnloaded=false;
-        Unloaded+=(_,_)=>{_browseMotionUnloaded=true;_browseTransition++;_browseRowsEntered=true;};
+        Unloaded+=(_,_)=>{_browseMotionUnloaded=true;_browseTransition++;_browseRowsEntered=true;ResetMotion(BrowseSurface);};
         foreach(var list in new ListViewBase[]{RecommendationGrid,TrackList,PlaylistList,FolderGrid,FolderList,UploaderList,UploaderGrid,DownloadsList})
         {
             list.ContainerContentChanging+=(_,args)=>
@@ -59,13 +59,22 @@ public sealed partial class MainPage
     {
         var version=++_browseTransition;
         foreach(var element in _browseMotionElements) ResetMotion(element);
-        _browseMotionElements.Clear();_browseRowsEntered=false;
+        _browseMotionElements.Clear();_browseRowsEntered=false;_browseContainerPassPending=false;
 #if VISUAL_CHECKS
         _browseEntranceRows=0;
 #endif
-        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low,()=>
+        // Arm the first frame synchronously, before bindings/layout can present the destination page.
+        if(_browseMotionUnloaded||!ViewModel.IsLoggedIn||ViewModel.IsLyricsOpen||!MotionEnabled)
+        {ResetMotion(BrowseSurface);_browseRowsEntered=true;return;}
+        ElementCompositionPreview.SetIsTranslationEnabled(BrowseSurface,true);
+        var surface=ElementCompositionPreview.GetElementVisual(BrowseSurface);
+        surface.StopAnimation("Opacity");surface.StopAnimation("Translation");
+        surface.Opacity=0;surface.Properties.InsertVector3("Translation",new(0,24,0));
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Normal,()=>
         {
-            if(_browseMotionUnloaded||version!=_browseTransition||!ViewModel.IsLoggedIn||ViewModel.IsLyricsOpen) return;
+            if(version!=_browseTransition) return;
+            if(_browseMotionUnloaded||!ViewModel.IsLoggedIn||ViewModel.IsLyricsOpen)
+            {ResetMotion(BrowseSurface);_browseRowsEntered=true;return;}
             AnimateBrowseElement(BrowseSurface,24,0);
             if(ViewModel.IsSettingsView)
             {
@@ -81,8 +90,10 @@ public sealed partial class MainPage
     {
         if(_browseRowsEntered||_browseContainerPassPending) return;
         _browseContainerPassPending=true;
+        var version=_browseTransition;
         DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low,()=>
         {
+            if(version!=_browseTransition) return;
             _browseContainerPassPending=false;
             if(_browseMotionUnloaded||_browseRowsEntered||!ViewModel.IsLoggedIn||ViewModel.IsSettingsView||ViewModel.IsLyricsOpen) return;
             var list=CurrentBrowseList();

@@ -40,8 +40,8 @@ public sealed class UrlImageConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
-        if (value is not string text || string.IsNullOrWhiteSpace(text) || !Uri.TryCreate(text, UriKind.Absolute, out var uri) || uri.Scheme != "https") return null!;
-        return new BitmapImage(uri) { DecodePixelWidth = int.TryParse(parameter as string, out var size) ? size : 320 };
+        if (value is not string text || string.IsNullOrWhiteSpace(text) || !Uri.TryCreate(text, UriKind.Absolute, out var uri) || uri.Scheme != "https" && !(DebugSession.IsActive && uri.IsFile)) return null!;
+        return ArtworkCache.Create(uri, int.TryParse(parameter as string, out var size) ? size : 320);
     }
     public object ConvertBack(object value, Type targetType, object parameter, string language) => throw new NotSupportedException();
 }
@@ -165,7 +165,7 @@ public sealed partial class MainPage : Page
         if (_initialized) return;
         _initialized = true;
 #if VISUAL_CHECKS
-        if (App.IsVisualCheck) { await RunVisualCheckAsync(); return; }
+        if (App.IsVisualCheck && !DebugSession.IsActive) { await RunVisualCheckAsync(); return; }
 #endif
         DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low,()=> { if(IsLoaded) ViewModel.Player.PrepareSystemSession(ViewModel.CurrentTrack); });
         await ViewModel.InitializeAsync();
@@ -254,6 +254,7 @@ public sealed partial class MainPage : Page
     }
     private async void ChooseCacheFolderClick(object sender, RoutedEventArgs e) => await ViewModel.RunAsync(async () =>
     {
+        if(DebugSession.IsActive){ViewModel.Notify("离线调试使用临时下载目录。",NoticeLevel.Info);return;}
         var picker = new Windows.Storage.Pickers.FolderPicker { SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.MusicLibrary };
         picker.FileTypeFilter.Add("*"); WinRT.Interop.InitializeWithWindow.Initialize(picker, App.WindowHandle);
         if (await picker.PickSingleFolderAsync() is { } folder) ViewModel.CacheDirectory = folder.Path;
@@ -264,6 +265,13 @@ public sealed partial class MainPage : Page
         var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(ViewModel.CacheDirectory);
         await Launcher.LaunchFolderAsync(folder);
     });
+    private async void ClearImageCacheClick(object sender,RoutedEventArgs e)
+    {
+        ClearImageCacheButton.IsEnabled=false;
+        try {await ArtworkCache.ClearAsync();ViewModel.Notify("图片缓存已清除。",NoticeLevel.Info);}
+        catch(Exception error) when(error is System.IO.IOException or UnauthorizedAccessException) {ViewModel.Notify("图片缓存暂时无法清除，请稍后重试。",NoticeLevel.Warn);}
+        finally {ClearImageCacheButton.IsEnabled=true;}
+    }
     private async void CurrentUploaderClick(object sender, RoutedEventArgs e)
     { if (ViewModel.CurrentTrack is { } track) await OpenUploaderAsync(track); }
     private async void TrackUploaderClick(object sender, RoutedEventArgs e)

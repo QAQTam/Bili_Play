@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices.WindowsRuntime;
+using System.Runtime.InteropServices.WindowsRuntime;
 using BiliPlay.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
@@ -37,7 +37,7 @@ public sealed partial class MainPage
             window.SetArtworkBackdropVisible(true, MotionEnabled);
             var dark=ActualTheme==ElementTheme.Dark;
             if(_ambientDark!=dark) { window.ResetArtworkBackdrop(); _ambientReady=false; _ambientDark=dark; }
-            var uri=(ViewModel.LyricsCover as BitmapImage)?.UriSource;
+            var uri=BiliPlay.Services.ArtworkCache.SourceUri(ViewModel.LyricsCover as BitmapImage);
             if(uri is not null && _ambientSource!=uri.AbsoluteUri)
             {
                 try
@@ -45,7 +45,7 @@ public sealed partial class MainPage
                     if(!uri.IsFile && !Text.IsMediaHost(uri)) throw new InvalidDataException("Unexpected artwork source");
                     using IRandomAccessStream stream=uri.IsFile
                         ? await (await StorageFile.GetFileFromPathAsync(uri.LocalPath)).OpenReadAsync().AsTask(load.Token)
-                        : await RandomAccessStreamReference.CreateFromUri(new Uri(Text.CoverImage(uri.AbsoluteUri,96))).OpenReadAsync().AsTask(load.Token);
+                        : await RandomAccessStreamReference.CreateFromUri(await BiliPlay.Services.ArtworkCache.ResolveUriAsync(new Uri(Text.CoverImage(uri.AbsoluteUri,96)))).OpenReadAsync().AsTask(load.Token);
                     var decoder=await BitmapDecoder.CreateAsync(stream).AsTask(load.Token);
                     var data=await decoder.GetPixelDataAsync(BitmapPixelFormat.Bgra8,BitmapAlphaMode.Straight,
                         new BitmapTransform { ScaledWidth=48,ScaledHeight=48 },ExifOrientationMode.IgnoreExifOrientation,ColorManagementMode.DoNotColorManage).AsTask(load.Token);

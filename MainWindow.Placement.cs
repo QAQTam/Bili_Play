@@ -1,4 +1,5 @@
 using System.Text.Json;
+using BiliPlay.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Windowing;
 using Windows.Graphics;
@@ -45,7 +46,7 @@ public sealed partial class MainWindow
     }
     private void SaveWindowPlacement()
     {
-        if (App.IsVisualCheck || _restoredBounds.Width <= 0) return;
+        if (App.IsVisualCheck || DebugSession.IsActive || _restoredBounds.Width <= 0) return;
         var rect = _restoredBounds;
         var maximized = AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Maximized };
         ViewModel.Store.SetSetting("windowPlacement", JsonSerializer.Serialize(new Placement(rect.X, rect.Y, rect.Width, rect.Height, maximized)));

@@ -27,6 +27,7 @@ public sealed partial class MainPage
         {
             ViewModel.CloseToTray = false;
             await VerifyLoginLayoutAsync(directory);
+            await VerifyDebugModeAsync(directory);
             await ((MainWindow)App.Window).VerifyWindowPlacementAsync();
             ViewModel.Client.RestoreCachedAccount(new(123, "离线布局验证", ""));
             ViewModel.IsLoggedIn = true;
@@ -152,11 +153,18 @@ public sealed partial class MainPage
             ((MainWindow)App.Window).VerifyGlobalBackdrop(false);
             _forceReducedMotion=false;
             for(var volume=0;volume<=100;volume+=10) ViewModel.Volume=volume;
-            File.WriteAllText(Path.Combine(directory,"result.json"),JsonSerializer.Serialize(new { Success=true,LoginLayout=true,Scenes=checks,RapidToggles=12,PlaybackMarkers=true,SearchHistory=true,LyricCueTransitions=true,StartupSubtitles=true,CoverLanding=true,ImmediateSelection=true,QualityDialogs=true,QualitySelectionFeedback=true,LyricHighlight=true,SocialLists=true,LocalFolderOrder=true,CacheSelection=true,NoticeMotion=true,DisabledClearButtons=true,GlobalBackdrop=true,TrackActivation=true,RowCovers=true,InitialLyricHighlight=true,LyricSeparation=true,Comments=true,PlaybackSpeed=true,UniformFooter=true,StableQueue=true,PageEntrances=true,InterruptibleFooter=true,StartupResponsive=true,DownloadedMenu=true,SettingsAbout=true },new JsonSerializerOptions { WriteIndented=true }));
+            await VerifyDebugEntryAsync();
+            File.WriteAllText(Path.Combine(directory,"result.json"),JsonSerializer.Serialize(new { Success=true,OfflineDebug=true,LoginLayout=true,Scenes=checks,RapidToggles=12,PlaybackMarkers=true,SearchHistory=true,LyricCueTransitions=true,StartupSubtitles=true,CoverLanding=true,ImmediateSelection=true,QualityDialogs=true,QualitySelectionFeedback=true,LyricHighlight=true,SocialLists=true,LocalFolderOrder=true,CacheSelection=true,NoticeMotion=true,DisabledClearButtons=true,GlobalBackdrop=true,TrackActivation=true,RowCovers=true,InitialLyricHighlight=true,LyricSeparation=true,Comments=true,PlaybackSpeed=true,UniformFooter=true,StableQueue=true,PageEntrances=true,InterruptibleFooter=true,StartupResponsive=true,DownloadedMenu=true,SettingsAbout=true },new JsonSerializerOptions { WriteIndented=true }));
         }
         catch(Exception error)
         { File.WriteAllText(Path.Combine(directory,"result.json"),JsonSerializer.Serialize(new { Success=false,Error=error.ToString(),Scenes=checks },new JsonSerializerOptions { WriteIndented=true })); }
-        finally { App.Window.Close(); }
+        finally
+        {
+            var demoRoot=DebugSession.DirectoryPath;
+            App.Window.Close();
+            if(demoRoot is not null&&(DebugSession.IsActive||Directory.Exists(demoRoot)))
+                File.WriteAllText(Path.Combine(directory,"result.json"),JsonSerializer.Serialize(new {Success=false,Error="关闭软件后离线调试数据未清理"}));
+        }
     }
     private async Task VerifyLocalFolderOrderAsync()
     {

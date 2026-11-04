@@ -8,12 +8,12 @@ namespace BiliPlay.Services;
 public sealed class LocalStore : IDisposable
 {
     private readonly SqliteConnection _db;
-    public LocalStore(string? dataDirectory = null)
+    public LocalStore(string? dataDirectory = null, bool transient = false)
     {
         SQLitePCL.Batteries_V2.Init();
         var folder = dataDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppProfile.DataDirectoryName);
         Directory.CreateDirectory(folder);
-        _db = new(new SqliteConnectionStringBuilder { DataSource = Path.Combine(folder, "library.db") }.ToString());
+        _db = new(new SqliteConnectionStringBuilder { DataSource = Path.Combine(folder, "library.db"), Pooling = !transient }.ToString());
         _db.Open();
         using var command = _db.CreateCommand();
         command.CommandText = """
@@ -150,6 +150,7 @@ public static class SessionVault
     private const string Username = "current";
     public static IReadOnlyList<SavedCookie> Read()
     {
+        if(DebugSession.IsActive)return [];
         try
         {
             var item = new PasswordVault().Retrieve(Resource, Username);
@@ -160,11 +161,13 @@ public static class SessionVault
     }
     public static void Save(IReadOnlyList<SavedCookie> cookies)
     {
+        if(DebugSession.IsActive)return;
         Clear();
         new PasswordVault().Add(new(Resource, Username, JsonSerializer.Serialize(cookies)));
     }
     public static void Clear()
     {
+        if(DebugSession.IsActive)return;
         var vault = new PasswordVault();
         try { vault.Remove(vault.Retrieve(Resource, Username)); }
         catch (System.Runtime.InteropServices.COMException) { }
