@@ -5,10 +5,10 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 [xml]$sourceManifest = Get-Content -LiteralPath (Join-Path $root 'Package.appxmanifest') -Raw
 $version = ([Version]$sourceManifest.Package.Identity.Version).ToString(3)
 $publisher = [string]$sourceManifest.Package.Identity.Publisher
-if (-not $OutputDirectory) { $OutputDirectory = Join-Path ([Environment]::GetFolderPath('Desktop')) ('Bili Play ' + $version + ' 安装包') }
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path ([Environment]::GetFolderPath('Desktop')) ('Bili_Play_' + $version) }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 if ($output -eq $root -or $output.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw '安装包输出必须在工作区之外。' }
-$deliveryNames = @(('BiliPlay_' + $version + '_x64.msix'), 'BiliPlay.cer', '安装说明.txt', 'LICENSE.txt')
+$deliveryNames = @(('BiliPlay_' + $version + '_x64.msix'), 'BiliPlay.cer', '安装说明.txt', 'LICENSE.txt', '用户协议.txt')
 if (Test-Path -LiteralPath $output) {
     $unexpected = @(Get-ChildItem -LiteralPath $output -Force | Where-Object { $_.PSIsContainer -or $_.Name -notin $deliveryNames })
     if ($unexpected.Count) { throw '交付目录包含其他文件，请使用空目录；不会自动删除其中的文件。' }
@@ -116,12 +116,18 @@ try {
     Copy-Item -LiteralPath $package -Destination $finalPackage -Force
     Copy-Item -LiteralPath $publicCert -Destination (Join-Path $output 'BiliPlay.cer') -Force
     Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $output 'LICENSE.txt') -Force
+    Copy-Item -LiteralPath (Join-Path $root '用户协议.txt') -Destination (Join-Path $output '用户协议.txt') -Force
     $instructions = @'
-安装说明：
+首次安装说明：
 
-1. 首次安装：双击 BiliPlay.cer，选择“安装证书”→“本地计算机”→“将所有证书放入下列存储”→“浏览”→“受信任的根证书颁发机构”。此操作需要管理员确认。
-2. 双击 BiliPlay_XXX.msix 以继续安装。
-3. 打开开始菜单中的 Bili Play，使用自己的哔哩哔哩账号扫码登录。
+1. 安装时：双击 BiliPlay.cer（证书图表的文件），选择“安装证书”→“本地计算机”→“将所有证书放入下列存储”→“浏览”→“受信任的根证书颁发机构”，后续一律下一步即可。此操作需要管理员权限。
+2. 双击 BiliPlay_XXX.msix （一个包图标的文件）以继续安装。
+3. 打开开始菜单中的 Bili Play 并使用自己的哔哩哔哩账号扫码登录。
+
+
+后续升级：
+
+直接打开 BiliPlay_XXX.msix 即可。
 '@
     [IO.File]::WriteAllText((Join-Path $output '安装说明.txt'), $instructions, [Text.UTF8Encoding]::new($true))
     Write-Output ('PASS production profile, self-contained runtimes, file hashes, signature and privacy: ' + $finalPackage)

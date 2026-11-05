@@ -479,6 +479,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     {
         if (refreshOnline) { NeedsLogin = false; Store.SetSetting("account", JsonSerializer.Serialize(Client.Account)); }
         IsLoggedIn = true; AccountName = Client.Account!.Name; QrImage = null; LoginLoading = false;
+        ProfileManager.UpdateAccount(Client.Account);
         AccountUid = Client.Account.Id.ToString(); AccountLevel = $"Lv.{Client.Account.Level}";
         Replace(SearchHistory, Store.SearchHistory(Client.Account!.Id));
         AccountAvatar = Uri.TryCreate(Client.Account.Avatar, UriKind.Absolute, out var avatar) ? ArtworkCache.Create(avatar,80) : null;
@@ -507,6 +508,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     }
     public void Navigate(string view)
     {
+        if (_view == "notifications" && view != "notifications") DisposeNotifications();
         if (!_restoringNavigation && IsLoggedIn && (view != _view || view == "search" && (Tracks.Count > 0 || Uploaders.Count > 0)))
             _backStack.Push(new(_view, PageTitle, SelectedFolder, Tracks.ToArray(), Uploaders.ToArray(), _query, _page, HasMore, SearchCategoryIndex, EmptyText));
         if (view != "cache") { IsCacheSelectionMode = false; SelectedCacheCount = 0; }
@@ -515,7 +517,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         _view = view; _browse?.Cancel(); _browse?.Dispose(); _browse = null; _browseVersion++;
         IsLibraryView = view == "library"; IsTracksView = view is "history" or "search" or "folder" or "playlist" or "cache";
         IsFolderView = view == "folder"; IsPlaylistView = view == "playlist"; IsCacheView = view == "cache";
-        IsSettingsView = view == "settings"; IsHomeView = view == "home";
+        IsSettingsView = view == "settings"; IsNotificationsView = view == "notifications"; IsHomeView = view == "home";
         IsHistoryView = view == "history";
         OnPropertyChanged(nameof(IsLocalView)); OnPropertyChanged(nameof(CanSelectCachedTracks));
         OnPropertyChanged(nameof(CanGoBack));
@@ -540,6 +542,9 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
             case "playlist":
                 PageTitle = "播放列表"; IsEmpty = Queue.Count == 0; EmptyText = "播放列表为空。"; break;
             case "cache": PageTitle = "下载"; RefreshCacheContent(); break;
+            case "notifications":
+                PageTitle = "通知中心"; IsEmpty = false; NotificationsStatus = "正在读取通知…";
+                _ = RefreshNotificationsAsync(); break;
             case "settings": PageTitle = "设置"; break;
         }
         Tracks.ResetLoading(); Uploaders.ResetLoading();
@@ -1334,6 +1339,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         SaveProgress(); _disposed = true; DisposeComments(); _lifetime.Cancel(); _timer.Stop();
         _login?.Cancel(); _browse?.Cancel(); _subtitleDiscovery?.Cancel(); _subtitles?.Cancel(); _folderPreviews?.Cancel();
+        DisposeNotifications();
         Player.Dispose(); Client.Dispose(); Store.Dispose();
     }
 }

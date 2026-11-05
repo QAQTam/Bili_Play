@@ -63,6 +63,7 @@ public sealed partial class MainPage
             await Task.Delay(TimeSpan.FromMilliseconds(GetDoubleClickTime() + 30), pending.Token);
             if (!ReferenceEquals(_pendingTrackClick, pending)) return;
             _pendingTrackClick = null;
+            await PlayHomeCoverLaunchAsync(list, track);
             await ViewModel.ActivateTrackAsync(track, false, list == PlaylistList || list == QueueList);
         }
         catch (OperationCanceledException) when (pending.IsCancellationRequested) { }
@@ -89,9 +90,34 @@ public sealed partial class MainPage
         _ignoredClickOwner = list; _ignoredClickTrack = track;
         _ignoreClickUntil = DateTimeOffset.UtcNow.AddMilliseconds(GetDoubleClickTime());
 #if VISUAL_CHECKS
-        _trackActivationTask = ViewModel.ActivateTrackAsync(track, true, list == PlaylistList || list == QueueList);
+        _trackActivationTask = ActivateDoubleTrackAsync(list, track);
 #else
-        _ = ViewModel.ActivateTrackAsync(track, true, list == PlaylistList || list == QueueList);
+        _ = ActivateDoubleTrackAsync(list, track);
 #endif
+    }
+    private async Task ActivateDoubleTrackAsync(ListViewBase list, Track track)
+    {
+        await PlayHomeCoverLaunchAsync(list, track);
+        await ViewModel.ActivateTrackAsync(track, true, list == PlaylistList || list == QueueList);
+    }
+    private async Task PlayHomeCoverLaunchAsync(ListViewBase list, Track track)
+    {
+        if (list != RecommendationGrid || !MotionEnabled || list.ContainerFromItem(track) is not FrameworkElement row || FindVisual<CenteredCover>(row) is not { } cover) return;
+        var source = ElementBounds(cover); var target = ElementBounds(FooterCover);
+        if (source.Width <= 0 || target.Width <= 0) return;
+        FlyingArtwork.Source = cover.Source; FlyingCover.Width = target.Width; FlyingCover.Height = target.Height;
+        Canvas.SetLeft(FlyingCover, target.X); Canvas.SetTop(FlyingCover, target.Y); CoverFlightLayer.Visibility = Visibility.Visible;
+        CoverFlightLayer.UpdateLayout();
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(FlyingCover);
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(FlyingCover, true);
+        var slide = visual.Compositor.CreateVector3KeyFrameAnimation(); slide.Duration = TimeSpan.FromMilliseconds(260);
+        var scale = visual.Compositor.CreateVector3KeyFrameAnimation(); scale.Duration = slide.Duration;
+        var start = new System.Numerics.Vector3((float)(source.X - target.X), (float)(source.Y - target.Y), 0);
+        var ratio = new System.Numerics.Vector3((float)(source.Width / target.Width), (float)(source.Height / target.Height), 1);
+        slide.InsertKeyFrame(0, start); slide.InsertKeyFrame(.72f, new((float)(-18), -8, 0)); slide.InsertKeyFrame(1, System.Numerics.Vector3.Zero);
+        scale.InsertKeyFrame(0, ratio); scale.InsertKeyFrame(.72f, new(1.06f, 1.06f, 1)); scale.InsertKeyFrame(1, System.Numerics.Vector3.One);
+        visual.StartAnimation("Translation", slide); visual.StartAnimation("Scale", scale); cover.Opacity = .25;
+        await Task.Delay(280);
+        visual.StopAnimation("Translation"); visual.StopAnimation("Scale"); CoverFlightLayer.Visibility = Visibility.Collapsed; cover.Opacity = 1;
     }
 }

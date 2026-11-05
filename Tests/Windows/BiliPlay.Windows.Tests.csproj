@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows10.0.26100.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
  <PropertyGroup Condition="'$(DevelopmentBuild)' == 'true'"><DefineConstants>$(DefineConstants);DEVELOPMENT_BUILD</DefineConstants></PropertyGroup>
- <ItemGroup><Compile Include="..\..\Services\DebugSession.cs" Link="DebugSession.cs"/><Compile Include="..\..\Services\AppProfile.cs" Link="AppProfile.cs"/><ProjectReference Include="..\..\Core\BiliPlay.Core.csproj"/><Compile Include="..\..\Services\DownloadService.cs" Link="DownloadService.cs"/><Compile Include="..\..\Services\LocalStore.cs" Link="LocalStore.cs"/><Compile Include="..\..\Services\SingleInstanceService.cs" Link="SingleInstanceService.cs"/>
+ <ItemGroup><Compile Include="..\..\Services\DebugSession.cs" Link="DebugSession.cs"/><Compile Include="..\..\Services\AppProfile.cs" Link="AppProfile.cs"/><Compile Include="..\..\Services\ProfileManager.cs" Link="ProfileManager.cs"/><ProjectReference Include="..\..\Core\BiliPlay.Core.csproj"/><Compile Include="..\..\Services\DownloadService.cs" Link="DownloadService.cs"/><Compile Include="..\..\Services\LocalStore.cs" Link="LocalStore.cs"/><Compile Include="..\..\Services\SingleInstanceService.cs" Link="SingleInstanceService.cs"/>
  <Compile Include="..\..\Services\AudioPlayback.cs" Link="AudioPlayback.cs"/>
  <Compile Include="..\..\Services\SubtitleCache.cs" Link="SubtitleCache.cs"/>
  <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.0"/><PackageReference Include="SQLitePCLRaw.bundle_winsqlite3" Version="2.1.11"/></ItemGroup>

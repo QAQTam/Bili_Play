@@ -167,8 +167,33 @@ public sealed partial class MainPage : Page
 #if VISUAL_CHECKS
         if (App.IsVisualCheck && !DebugSession.IsActive) { await RunVisualCheckAsync(); return; }
 #endif
+        if (!DebugSession.IsActive && !await EnsureAgreementAsync()) return;
         DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low,()=> { if(IsLoaded) ViewModel.Player.PrepareSystemSession(ViewModel.CurrentTrack); });
         await ViewModel.InitializeAsync();
+    }
+    private async void CancelNewProfileClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button) button.IsEnabled = false;
+        await ((MainWindow)App.Window).CancelNewProfileAsync();
+    }
+    private async Task<bool> EnsureAgreementAsync()
+    {
+        if (ViewModel.Store.GetSetting("agreementAccepted", "false") == "true") return true;
+        var check = new CheckBox { Content = "我已阅读并同意《Bili Play 用户协议与隐私政策》", Margin = new Thickness(0, 12, 0, 0) };
+        var content = new StackPanel { Spacing = 8 };
+        content.Children.Add(new ScrollViewer { MaxHeight = 520, Content = new TextBlock { Text = UserAgreement.Text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } });
+        content.Children.Add(check);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot, RequestedTheme = ActualTheme, Title = UserAgreement.Title, Content = content,
+            PrimaryButtonText = "同意并继续", CloseButtonText = "退出", DefaultButton = ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = false
+        };
+        check.Checked += (_, _) => dialog.IsPrimaryButtonEnabled = true;
+        check.Unchecked += (_, _) => dialog.IsPrimaryButtonEnabled = false;
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) { App.Window.Close(); return false; }
+        ViewModel.Store.SetSetting("agreementAccepted", "true");
+        return true;
     }
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -183,7 +208,7 @@ public sealed partial class MainPage : Page
                 { TrackList.SelectedItems.Clear(); ViewModel.SelectedCacheCount = 0; }
             });
         if (e.PropertyName is nameof(ViewModel.HomeGridMode) or nameof(ViewModel.FolderGridMode)
-            or nameof(ViewModel.SearchGridMode) or nameof(ViewModel.FolderTracksGridMode) or nameof(ViewModel.SearchCategoryIndex) or nameof(ViewModel.CacheTabIndex)) QueueBrowseEntrance();
+            or nameof(ViewModel.SearchGridMode) or nameof(ViewModel.FolderTracksGridMode) or nameof(ViewModel.SearchCategoryIndex) or nameof(ViewModel.CacheTabIndex) or nameof(ViewModel.IsNotificationsView)) QueueBrowseEntrance();
         if (e.PropertyName == nameof(ViewModel.ActiveSubtitleIndex)) StyleVisibleLyrics(false);
         if (e.PropertyName == nameof(ViewModel.FollowSubtitleIndex)) FocusLyric();
         if (e.PropertyName == nameof(ViewModel.HasLyrics)) LyricContentChanged();
@@ -209,6 +234,10 @@ public sealed partial class MainPage : Page
         if (ViewModel.IsLyricsOpen) return;
         if (view == "home") await ViewModel.OpenHomeCommand.ExecuteAsync(null);
         else ViewModel.Navigate(view);
+    }
+    private async void RefreshNotificationsClick(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.RefreshNotificationsAsync();
     }
     public async Task GoBackAsync()
     {

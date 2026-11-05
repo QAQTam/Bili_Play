@@ -106,7 +106,8 @@
                                         <Button Grid.Column="1" Content="{x:Bind ViewModel.FollowersLabel, Mode=OneWay}" Tag="followers" Click="SocialListClick" HorizontalAlignment="Stretch"/>
                                     </Grid>
                                     <Button Content="重新登录" Click="ReLoginClick" Visibility="{x:Bind ViewModel.ReLoginVisibility, Mode=OneWay}" HorizontalAlignment="Stretch"/>
-                                    <Button Content="退出登录" Click="LogoutClick" Visibility="{x:Bind ViewModel.AccountLogoutVisibility, Mode=OneWay}" HorizontalAlignment="Stretch" Margin="0,8,0,0"/>
+                                    <Button Content="切换账号" Click="SwitchAccountClick" HorizontalAlignment="Stretch" Margin="0,4,0,0"/>
+                                    <Button Content="退出登录" Click="LogoutClick" Visibility="{x:Bind ViewModel.AccountLogoutVisibility, Mode=OneWay}" HorizontalAlignment="Stretch"/>
                                 </StackPanel>
                                 <TextBlock Text="请使用手机哔哩哔哩扫码登录。" TextWrapping="Wrap" Visibility="{x:Bind ViewModel.LoginVisibility, Mode=OneWay}" />
                             </StackPanel>

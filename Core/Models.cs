@@ -14,6 +14,10 @@ public sealed record SocialUser(long Id, string Name, string Avatar, string Sign
 {
     public string Url => $"https://space.bilibili.com/{Id}";
 }
+public sealed record AccountNotification(string Category, string Title, string Content, string Time, string Avatar = "", string Url = "")
+{
+    public string Summary => string.IsNullOrWhiteSpace(Content) ? Title : Content;
+}
 public sealed record LoginCode(string Url, string Key);
 public sealed record Folder(long Id, string Title, int Count, bool Owned, bool IsPrivate = false,
     string Intro = "", string Cover = "", string CoverBack = "", string CoverMiddle = "")

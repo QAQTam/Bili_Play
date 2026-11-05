@@ -91,6 +91,15 @@
     <TextBlock Text="{x:Bind Text}" FontSize="24" VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="{x:Bind HasImage, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
    </Grid>
   </DataTemplate>
+  <DataTemplate x:Key="NotificationTemplate" x:DataType="core:AccountNotification">
+   <Border Padding="12" Margin="0,0,0,8" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+    <Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <PersonPicture Width="40" Height="40" ProfilePicture="{x:Bind Avatar, Converter={StaticResource CoverImage}, ConverterParameter=96}"/>
+     <StackPanel Grid.Column="1" Spacing="4"><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Text="{x:Bind Category}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontSize="12"/><TextBlock Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis"/></StackPanel><TextBlock Text="{x:Bind Summary}" TextWrapping="Wrap" MaxLines="3" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
+     <TextBlock Grid.Column="2" Text="{x:Bind Time}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Top"/>
+    </Grid>
+   </Border>
+  </DataTemplate>
  </Page.Resources>
  <Grid>
   <Grid x:Name="LoginSurface" Visibility="{x:Bind ViewModel.LoginVisibility, Mode=OneWay}" Background="Transparent">
@@ -107,6 +116,7 @@
     </StackPanel>
    </ScrollViewer>
    <TextBlock x:Name="LoginVersion" DoubleTapped="LoginVersionDoubleTapped" Grid.Row="1" HorizontalAlignment="Right" Margin="24,8,24,20" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"><Run Text="版本："/><Run Text="{x:Bind ViewModel.AppVersion}"/></TextBlock>
+   <Button Content="取消新建配置文件" Click="CancelNewProfileClick" Visibility="{x:Bind ViewModel.NewProfileCancelVisibility, Mode=OneWay}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="24,8,24,20"/>
   </Grid>
 
   <SplitView x:Name="QueueHost" DisplayMode="Overlay" PanePlacement="Right" OpenPaneLength="{x:Bind ViewModel.SidePaneWidth, Mode=OneWay}" CompactPaneLength="0" LightDismissOverlayMode="On"
@@ -167,6 +177,7 @@
      <NavigationViewItem Content="最近播放" Tag="history" Icon="Clock"/>
      <NavigationViewItem Content="播放列表" Tag="playlist" Icon="List"/>
      <NavigationViewItem Content="下载" Tag="cache" Icon="Download"/>
+     <NavigationViewItem Content="通知中心" Tag="notifications" Icon="Message"/>
     </NavigationView.MenuItems>
     <Grid x:Name="BrowseSurface" Margin="8,0,0,0">
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
@@ -306,6 +317,14 @@
           </StackPanel>
          </Border>
         </Grid>
+       </ScrollViewer>
+       <ScrollViewer x:Name="NotificationsScroller" Padding="28,0,28,24" HorizontalContentAlignment="Stretch" Visibility="{x:Bind ViewModel.IsNotificationsView, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
+        <StackPanel x:Name="NotificationsPanel" Spacing="16" MaxWidth="860" HorizontalAlignment="Left">
+         <Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="查看私信、点赞、回复与系统通知" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/><Button Grid.Column="1" Content="刷新" Click="RefreshNotificationsClick"/></Grid>
+         <RadioButtons x:Name="NotificationCategoryPicker" MaxColumns="5" SelectedIndex="{x:Bind ViewModel.NotificationCategoryIndex, Mode=TwoWay}"><x:String>全部</x:String><x:String>私信</x:String><x:String>收到的赞</x:String><x:String>回复与@</x:String><x:String>系统通知</x:String></RadioButtons>
+         <Grid MinHeight="160"><ListView x:Name="NotificationList" ItemsSource="{x:Bind ViewModel.VisibleNotifications, Mode=OneWay}" ItemTemplate="{StaticResource NotificationTemplate}" SelectionMode="None" IsItemClickEnabled="False"/><StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" IsHitTestVisible="False" Visibility="{x:Bind ViewModel.NotificationsEmpty, Mode=OneWay, Converter={StaticResource VisibleWhen}}"><FontIcon Glyph="&#xE715;" FontSize="30" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><TextBlock Text="{x:Bind ViewModel.NotificationsStatus, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center"/></StackPanel><ProgressRing Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Top" IsActive="{x:Bind ViewModel.IsNotificationsLoading, Mode=OneWay}"/></Grid>
+         <TextBlock Text="{x:Bind ViewModel.NotificationsStatus, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Visibility="{x:Bind ViewModel.NotificationsEmpty, Mode=OneWay, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
+        </StackPanel>
        </ScrollViewer>
       </Grid>
      </Grid>

@@ -172,4 +172,11 @@ public static class SessionVault
         try { vault.Remove(vault.Retrieve(Resource, Username)); }
         catch (System.Runtime.InteropServices.COMException) { }
     }
+    public static void ClearForProfile(string profileId)
+    {
+        if (DebugSession.IsActive || profileId == "default") return;
+        var vault = new PasswordVault();
+        try { vault.Remove(vault.Retrieve($"BiliPlay.BilibiliSession.{profileId}", Username)); }
+        catch (System.Runtime.InteropServices.COMException) { }
+    }
 }

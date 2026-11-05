@@ -7,6 +7,7 @@ public partial class PlayerViewModel
     public bool IsDebugMode => DebugSession.IsActive;
     public Microsoft.UI.Xaml.Visibility DebugModeVisibility => IsDebugMode ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility AccountLogoutVisibility => IsDebugMode ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+    public Microsoft.UI.Xaml.Visibility NewProfileCancelVisibility => ProfileManager.IsNewProfile ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     private async Task InitializeDebugAsync()
     {
         var tracks=DebugSession.CreateTracks();Client.RestoreCachedAccount(new(1,"离线调试",""));

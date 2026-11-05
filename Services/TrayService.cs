@@ -12,6 +12,7 @@ public sealed class TrayService : IDisposable
     private readonly uint _taskbarCreated;
     private IconData _data;
     private bool _disposed;
+    private static readonly Guid StableIconGuid = new("8C2F2D8B-8F3D-4D53-9A12-7E6F5B4B2C10");
     public bool Available { get; private set; }
 
     public TrayService(nint window, Action show, Action exit)
@@ -23,10 +24,15 @@ public sealed class TrayService : IDisposable
         _data = new()
         {
             Size = (uint)Marshal.SizeOf<IconData>(), Window = window, Id = 1,
-            Flags = 1 | 2 | 4, Message = Callback, Icon = icon, Tip = AppProfile.DisplayName,
+            Flags = 1 | 2 | 4 | 0x20, Message = Callback, Icon = icon, Guid = StableIconGuid, Tip = AppProfile.DisplayName,
             Info = "", InfoTitle = ""
         };
-        if (SetWindowSubclass(window, _procedure, 1, 0)) Available = ShellNotifyIcon(0, ref _data);
+        if (SetWindowSubclass(window, _procedure, 1, 0))
+        {
+            // Remove a stale instance with the same stable identity before adding the current process icon.
+            ShellNotifyIcon(2, ref _data);
+            Available = ShellNotifyIcon(0, ref _data);
+        }
     }
     private nint WindowProc(nint hwnd, uint message, nuint wParam, nint lParam, nuint id, nuint data)
     {
