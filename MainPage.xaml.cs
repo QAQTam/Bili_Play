@@ -45,6 +45,15 @@ public sealed class UrlImageConverter : IValueConverter
     }
     public object ConvertBack(object value, Type targetType, object parameter, string language) => throw new NotSupportedException();
 }
+public sealed class AvatarImageConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is not string text || !Uri.TryCreate(text,UriKind.Absolute,out var uri) || !Text.IsMediaHost(uri)) return null!;
+        return ArtworkCache.CreateAvatar(uri, int.TryParse(parameter as string,out var size)?size:96);
+    }
+    public object ConvertBack(object value, Type targetType, object parameter, string language) => throw new NotSupportedException();
+}
 
 public sealed partial class MainPage : Page
 {
@@ -117,15 +126,19 @@ public sealed partial class MainPage : Page
     }
     private void SettingsViewportSizeChanged(object sender,SizeChangedEventArgs args)
     {
-        if(SettingsAboutColumn is null||AboutCard is null) return;
+        if(SettingsAboutColumn is null||AboutPanel is null) return;
         var sideBySide=args.NewSize.Width-56>=640;
         var width=sideBySide?280:0;
         if(SettingsAboutColumn.Width.Value!=width) SettingsAboutColumn.Width=new GridLength(width);
         SettingsLayout.ColumnSpacing=sideBySide?32:0;
-        Grid.SetColumn(AboutCard,sideBySide?1:0);Grid.SetRow(AboutCard,sideBySide?0:1);
-        AboutCard.Width=sideBySide?280:double.NaN;
-        AboutCard.MaxWidth=sideBySide?280:640;
-        AboutCard.HorizontalAlignment=sideBySide?HorizontalAlignment.Right:HorizontalAlignment.Stretch;
+        Grid.SetColumn(AboutPanel,sideBySide?1:0);Grid.SetRow(AboutPanel,sideBySide?0:1);
+        AboutPanel.Width=sideBySide?280:double.NaN;
+        AboutPanel.MaxWidth=sideBySide?280:640;
+        AboutPanel.HorizontalAlignment=sideBySide?HorizontalAlignment.Right:HorizontalAlignment.Stretch;
+    }
+    private void NotificationViewportSizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        if (NotificationsPanel is not null) NotificationsPanel.Width = Math.Max(0, Math.Min(860, args.NewSize.Width - 56));
     }
     private void PlayerBarSizeChanged(object sender, SizeChangedEventArgs args) => ViewModel.PlayerBarHeight = args.NewSize.Height;
     private void CloseCommentsClick(object sender, RoutedEventArgs args) => ViewModel.ShowComments = false;
@@ -181,7 +194,7 @@ public sealed partial class MainPage : Page
         if (ViewModel.Store.GetSetting("agreementAccepted", "false") == "true") return true;
         var check = new CheckBox { Content = "我已阅读并同意《Bili Play 用户协议与隐私政策》", Margin = new Thickness(0, 12, 0, 0) };
         var content = new StackPanel { Spacing = 8 };
-        content.Children.Add(new ScrollViewer { MaxHeight = 520, Content = new TextBlock { Text = UserAgreement.Text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } });
+        content.Children.Add(AgreementBody());
         content.Children.Add(check);
         var dialog = new ContentDialog
         {
@@ -194,6 +207,15 @@ public sealed partial class MainPage : Page
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) { App.Window.Close(); return false; }
         ViewModel.Store.SetSetting("agreementAccepted", "true");
         return true;
+    }
+    private ScrollViewer AgreementBody() => new() { MaxHeight = Math.Max(160, Math.Min(520, ActualHeight - 240)), Content = new TextBlock { Text = UserAgreement.Text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } };
+    private bool _agreementOpen;
+    private async void ViewAgreementClick(object sender, RoutedEventArgs args)
+    {
+        if (_agreementOpen) return;
+        _agreementOpen = true;
+        try { await new ContentDialog { XamlRoot=XamlRoot, RequestedTheme=ActualTheme, Title=UserAgreement.Title, Content=AgreementBody(), CloseButtonText="关闭" }.ShowAsync(); }
+        finally { _agreementOpen=false; }
     }
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -209,6 +231,7 @@ public sealed partial class MainPage : Page
             });
         if (e.PropertyName is nameof(ViewModel.HomeGridMode) or nameof(ViewModel.FolderGridMode)
             or nameof(ViewModel.SearchGridMode) or nameof(ViewModel.FolderTracksGridMode) or nameof(ViewModel.SearchCategoryIndex) or nameof(ViewModel.CacheTabIndex) or nameof(ViewModel.IsNotificationsView)) QueueBrowseEntrance();
+        if (e.PropertyName == nameof(ViewModel.VisibleNotifications) && ViewModel.IsNotificationsView) QueueBrowseEntrance();
         if (e.PropertyName == nameof(ViewModel.ActiveSubtitleIndex)) StyleVisibleLyrics(false);
         if (e.PropertyName == nameof(ViewModel.FollowSubtitleIndex)) FocusLyric();
         if (e.PropertyName == nameof(ViewModel.HasLyrics)) LyricContentChanged();
@@ -232,12 +255,13 @@ public sealed partial class MainPage : Page
         if (view is null) return;
         await CloseLyricsAsync();
         if (ViewModel.IsLyricsOpen) return;
-        if (view == "home") await ViewModel.OpenHomeCommand.ExecuteAsync(null);
+        if (view == "home")
+        {
+            var alreadyHome = ViewModel.IsHomeView;
+            if (alreadyHome) ViewModel.ReplayBrowseEntrance();
+            await ViewModel.OpenHomeCommand.ExecuteAsync(null);
+        }
         else ViewModel.Navigate(view);
-    }
-    private async void RefreshNotificationsClick(object sender, RoutedEventArgs e)
-    {
-        await ViewModel.RefreshNotificationsAsync();
     }
     public async Task GoBackAsync()
     {
@@ -549,8 +573,8 @@ public sealed partial class MainPage : Page
     }
     private void LyricsEntrance(bool fresh)
     {
-        var current=_lyricsColumnTween?.Sample() ?? (new Vector4(0,fresh?64:0,0,0),Vector4.Zero);
-        _lyricsColumnTween=AnimateTween(LyricsColumn,"Translation",current.Item1,Vector4.Zero,current.Item2,360);
+        var current=_lyricsColumnTween?.Sample() ?? (new Vector4(0,fresh?48:0,0,0),Vector4.Zero);
+        _lyricsColumnTween=AnimateTween(LyricsColumn,"Translation",current.Item1,Vector4.Zero,current.Item2,260);
     }
     private void SettleArtwork()
     {

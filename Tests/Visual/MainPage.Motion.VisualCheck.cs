@@ -47,7 +47,8 @@ public sealed partial class MainPage
                 ViewModel.CurrentTrack=song;
                 if(view=="home") ViewModel.Tracks.Add(song with {Bvid="BV8xx411c7mD"});
                 await Task.Delay(25);
-                Check(version==_browseTransition&&count==_browseMotionElements.Count,"切歌或增量加载重播了整页动画");
+                Check(version==_browseTransition,"切歌或增量加载重播了整页动画");
+                Check(_enteredBrowseItems.Contains(BrowseItemKey(view=="library"?ViewModel.Folders[0]:song))||view=="settings","已有条目因追加内容丢失动画状态");
             }
             ViewModel.Navigate("settings");ViewModel.Navigate("library");ViewModel.Navigate("playlist");
             Check(ElementCompositionPreview.GetElementVisual(BrowseSurface).Opacity==0,"连续切页暴露了未初始化的新页面");
@@ -86,6 +87,60 @@ public sealed partial class MainPage
         }
         ViewModel.Store.SetSetting("singleClickBehavior",ViewModel.SingleClickBehaviorIndex.ToString());
         ViewModel.Store.SetSetting("doubleClickBehavior",ViewModel.DoubleClickBehaviorIndex.ToString());
+    }
+    private async Task VerifyBrowseAndNotificationsAsync(string directory)
+    {
+        var oldHome=ViewModel.HomeGridMode;
+        try
+        {
+            ViewModel.HomeGridMode=true;ViewModel.Navigate("home");ViewModel.Tracks.Clear();
+            await Task.Delay(100);
+            Check(!_browseRowsEntered,"空首页提前消耗了图标甩入动画");
+            for(var i=0;i<8;i++) ViewModel.Tracks.Add(new(800+i,$"BV{i}xx411c7mD",$"首页动画 {i}","合成 UP 主","",100));
+            UpdateLayout();await Task.Delay(100);
+            Check(_browseEntranceRows>0&&_browseRowsEntered,"异步加载的首页图标没有甩入");
+            var template=RecommendationGrid.ContainerFromIndex(0) as GridViewItem;
+            Check(template?.ContentTemplateRoot is UIElement content&&_browseMotionElements.Contains(content),"图标没有在模板内容上执行甩入");
+            var lateTrack=new Track(999,"BV9xx411c7mD","第二批推荐","合成 UP 主","",100);
+            var previousVersion=_browseTransition;
+            ViewModel.Tracks.Add(lateTrack);
+            RecommendationGrid.ScrollIntoView(lateTrack);UpdateLayout();await Task.Delay(120);
+            Check(_enteredBrowseItems.Contains(BrowseItemKey(lateTrack)),"后续批次推荐直接出现，跳过了甩入");
+            Check(_browseTransition==previousVersion,"后续批次重播了整个首页");
+            for(var click=0;click<3;click++)
+            {
+                var version=_browseTransition;ViewModel.ReplayBrowseEntrance();
+                Check(_browseTransition>version,"重复点击首页未重新启动甩入");
+                await Task.Delay(70);
+            }
+            await Task.Delay(750);
+            Check(ElementCompositionPreview.GetElementVisual(RecommendationGrid).Opacity==1,"快速重播后首页不可见");
+            ViewModel.Navigate("notifications");
+            ViewModel.AccountNotifications.Clear();
+            ViewModel.AccountNotifications.Add(new("回复与@","合成用户甲、合成用户乙","", "2026-11-06 10:30", IsLike:true,TargetText:new string('评',100),TargetKind:"评论",ActorCount:38,ActorAvatars:["",""]));
+            ViewModel.AccountNotifications.Add(new("回复与@","另一位合成用户","一条简短的回复", "2026-11-06 10:20",TargetText:"原评论缩略文本"));
+            ViewModel.NotificationCategoryIndex=1;
+            Check(NotificationCategoryPicker.Items.Count==4&&NotificationCategoryPicker.Items[1] as string=="收到的赞","通知中心缺少收到的赞或顺序错误");
+            await Task.Delay(450);UpdateLayout();
+            Check(NotificationList.Items.Count==1&&NotificationList.Items[0] is AccountNotification{IsLike:true},"点赞与回复分类没有分开");
+            Check(NotificationList.ContainerFromIndex(0) is ListViewItem notice&&notice.ContentTemplateRoot is UIElement body&&_browseMotionElements.Contains(body),"通知条目没有甩入");
+            ViewModel.IsNotificationsLoading=true;UpdateLayout();
+            Check(NotificationLoadingRow.Visibility==Visibility.Visible&&!ViewModel.HasNotificationStatus,"通知读取提示没有与进度指示放在同一行");
+            ViewModel.IsNotificationsLoading=false;ViewModel.NotificationCategoryIndex=2;await Task.Delay(450);UpdateLayout();
+            Check(NotificationList.Items.Count==1&&NotificationList.Items[0] is AccountNotification{IsLike:false},"回复分类仍显示点赞条目");
+            for(var i=0;i<NotificationList.Items.Count;i++)
+            {
+                if(NotificationList.ContainerFromIndex(i) is ListViewItem row)
+                {
+                    Check(row.ActualWidth<=860,"通知行超出最大宽度");Check(row.ActualHeight<150,"通知引用文字未截断，撑高了整行");
+                    var right=row.TransformToVisual(NotificationsScroller).TransformPoint(new(row.ActualWidth,0)).X;
+                    Check(right<=NotificationsScroller.ActualWidth-20,"通知缩略图超出了页面可见范围");
+                }
+            }
+            await SaveVisualAsync(Path.Combine(directory,"notification-cards.png"));
+        }
+        finally
+        { ViewModel.AccountNotifications.Clear();ViewModel.HomeGridMode=oldHome;ViewModel.Navigate("home"); }
     }
     private async Task VerifyInterruptibleFooterAsync()
     {

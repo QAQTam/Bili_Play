@@ -83,6 +83,7 @@ public sealed class LocalStore : IDisposable
     }
     public IReadOnlyList<string> SearchHistory(long account)
     {
+        if (!RecordSearchHistory) return [];
         using var c = _db.CreateCommand();
         c.CommandText = "SELECT query FROM search_history WHERE account=$a ORDER BY searched_at DESC LIMIT 30";
         c.Parameters.AddWithValue("$a", account);
@@ -93,6 +94,7 @@ public sealed class LocalStore : IDisposable
     }
     public void RememberSearch(long account, string query)
     {
+        if (!RecordSearchHistory || string.IsNullOrWhiteSpace(query)) return;
         using var c = _db.CreateCommand();
         c.CommandText = """
             INSERT INTO search_history VALUES($a,$q,$t) ON CONFLICT(account,query)
@@ -102,6 +104,11 @@ public sealed class LocalStore : IDisposable
             """;
         c.Parameters.AddWithValue("$a", account); c.Parameters.AddWithValue("$q", query.Trim());
         c.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()); c.ExecuteNonQuery();
+    }
+    public bool RecordSearchHistory
+    {
+        get => GetSetting("recordSearchHistory", "true") != "false";
+        set => SetSetting("recordSearchHistory", value ? "true" : "false");
     }
     public IReadOnlyList<Track> History(long account)
     {

@@ -5,6 +5,7 @@
  <Page.Resources>
   <local:BoolVisibilityConverter x:Key="VisibleWhen"/>
   <local:UrlImageConverter x:Key="CoverImage"/>
+  <local:AvatarImageConverter x:Key="AvatarImage"/>
   <local:PlaybackTimeConverter x:Key="PlaybackTime"/>
   <Style x:Key="TransportButton" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
    <Setter Property="Width" Value="36"/><Setter Property="Height" Value="36"/><Setter Property="Padding" Value="6"/><Setter Property="CornerRadius" Value="4"/>
@@ -57,7 +58,7 @@
   </Style>
   <DataTemplate x:Key="CommentLeafTemplate" x:DataType="vm:CommentEntry">
    <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-    <PersonPicture Width="32" Height="32" VerticalAlignment="Top" ProfilePicture="{x:Bind Avatar, Mode=OneWay, Converter={StaticResource CoverImage}, ConverterParameter=96}"/>
+    <PersonPicture Width="32" Height="32" VerticalAlignment="Top" ProfilePicture="{x:Bind Avatar, Mode=OneWay, Converter={StaticResource AvatarImage}, ConverterParameter=96}"/>
     <StackPanel Grid.Column="1" Spacing="5">
      <HyperlinkButton Content="{x:Bind Author, Mode=OneWay}" Tag="{x:Bind AuthorId}" Click="CommentAuthorClick" Padding="0" HorizontalAlignment="Left" MaxWidth="280"/>
      <local:CommentBody Comment="{x:Bind Data, Mode=OneWay}"/>
@@ -93,10 +94,20 @@
   </DataTemplate>
   <DataTemplate x:Key="NotificationTemplate" x:DataType="core:AccountNotification">
    <Border Padding="12" Margin="0,0,0,8" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-    <Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-     <PersonPicture Width="40" Height="40" ProfilePicture="{x:Bind Avatar, Converter={StaticResource CoverImage}, ConverterParameter=96}"/>
-     <StackPanel Grid.Column="1" Spacing="4"><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Text="{x:Bind Category}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontSize="12"/><TextBlock Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis"/></StackPanel><TextBlock Text="{x:Bind Summary}" TextWrapping="Wrap" MaxLines="3" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
-     <TextBlock Grid.Column="2" Text="{x:Bind Time}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Top"/>
+    <Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="56"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <Grid Width="56" Height="40" VerticalAlignment="Top">
+      <PersonPicture Width="36" Height="36" HorizontalAlignment="Left" ProfilePicture="{x:Bind AvatarOne, Converter={StaticResource AvatarImage}, ConverterParameter=96}"/>
+      <PersonPicture Width="36" Height="36" HorizontalAlignment="Left" Margin="20,0,0,0" ProfilePicture="{x:Bind AvatarTwo, Converter={StaticResource AvatarImage}, ConverterParameter=96}" Visibility="{x:Bind HasAvatarTwo, Converter={StaticResource VisibleWhen}}"/>
+     </Grid>
+     <StackPanel Grid.Column="1" Spacing="4" MinWidth="0">
+      <TextBlock Text="{x:Bind Summary}" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxLines="2" MaxHeight="42"/>
+      <TextBlock Text="{x:Bind Excerpt}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" MaxLines="1" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind HasContent, Converter={StaticResource VisibleWhen}}"/>
+      <TextBlock Text="{x:Bind Time}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+     </StackPanel>
+     <Border Grid.Column="2" Width="64" Height="48" CornerRadius="4" Background="{ThemeResource ControlAltFillColorSecondaryBrush}" VerticalAlignment="Top" Visibility="{x:Bind HasTarget, Converter={StaticResource VisibleWhen}}">
+      <Grid><local:CenteredCover CornerRadius="4" Source="{x:Bind TargetImage, Converter={StaticResource CoverImage}, ConverterParameter=128}" Visibility="{x:Bind HasTargetImage, Converter={StaticResource VisibleWhen}}"/><TextBlock Text="{x:Bind TargetExcerpt}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxLines="2" FontSize="10" Padding="4" VerticalAlignment="Center" Visibility="{x:Bind HasTargetImage, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
+      </Grid>
+     </Border>
     </Grid>
    </Border>
   </DataTemplate>
@@ -186,7 +197,7 @@
      <CommandBar Grid.Column="1" Margin="0" DefaultLabelPosition="Right" Background="Transparent" IsDynamicOverflowEnabled="False" OverflowButtonVisibility="{x:Bind ViewModel.ToolbarOverflowVisibility, Mode=OneWay}"
        Visibility="{x:Bind ViewModel.IsSettingsView, Mode=OneWay, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}">
       <AppBarButton Icon="OpenLocal" Label="在文件资源管理器中查看" Click="OpenCacheFolderClick" Visibility="{x:Bind ShowWhileNotSelecting(ViewModel.IsCacheView, ViewModel.IsCacheSelectionMode), Mode=OneWay}"/>
-      <AppBarToggleButton Icon="SelectAll" Label="{x:Bind ViewModel.CacheSelectionLabel, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.CanSelectCachedTracks, Mode=OneWay}" IsChecked="{x:Bind ViewModel.IsCacheSelectionMode, Mode=TwoWay}" Visibility="{x:Bind ViewModel.IsCachedView, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
+      <AppBarToggleButton x:Name="CacheSelectButton" Icon="SelectAll" Label="{x:Bind ViewModel.CacheSelectionLabel, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.CanSelectCachedTracks, Mode=OneWay}" Opacity="{x:Bind ViewModel.CacheSelectionOpacity, Mode=OneWay}" IsChecked="{x:Bind ViewModel.IsCacheSelectionMode, Mode=TwoWay}" Visibility="{x:Bind ViewModel.IsCachedView, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
       <AppBarButton x:Name="SelectAllCachedButton" Icon="SelectAll" Label="全选" IsEnabled="{x:Bind ViewModel.CanSelectCachedTracks, Mode=OneWay}" Click="SelectAllCachedClick" Visibility="{x:Bind ViewModel.IsCacheSelectionMode, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
       <AppBarButton x:Name="DeleteSelectedCachedButton" Icon="Delete" Label="删除所选" Opacity="{x:Bind ViewModel.DeleteSelectedCacheOpacity, Mode=OneWay}" Click="DeleteSelectedCachedClick" IsEnabled="{x:Bind ViewModel.HasSelectedCacheTracks, Mode=OneWay}" Visibility="{x:Bind ViewModel.IsCacheSelectionMode, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
       <AppBarButton Icon="Play" Label="播放全部" Command="{x:Bind ViewModel.PlayAllCommand}" IsEnabled="{x:Bind ViewModel.HasTracks, Mode=OneWay}" Visibility="{x:Bind ShowWhileNotSelecting(ViewModel.HasTrackContent, ViewModel.IsCacheSelectionMode), Mode=OneWay}"/>
@@ -217,23 +228,23 @@
          <Border Width="232" Height="222" Padding="12" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
           <Grid><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
            <Grid Height="142" VerticalAlignment="Top">
-            <FontIcon Glyph="&#xE8B7;" FontSize="64" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Visibility="{x:Bind HasContents, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
-            <Grid Visibility="{x:Bind HasContents, Converter={StaticResource VisibleWhen}}">
-            <Border Width="174" Height="98" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="26,3,0,0" CornerRadius="6" Background="{ThemeResource ControlAltFillColorSecondaryBrush}"><local:CenteredCover Source="{x:Bind BackImage, Converter={StaticResource CoverImage}, ConverterParameter=320}"/></Border>
-            <Border Width="184" Height="104" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14,14,0,0" CornerRadius="6" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource ControlAltFillColorSecondaryBrush}"><local:CenteredCover Source="{x:Bind MiddleImage, Converter={StaticResource CoverImage}, ConverterParameter=320}"/></Border>
-            <Border Width="196" Height="110" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="2,26,0,0" CornerRadius="6" Background="{ThemeResource ControlAltFillColorSecondaryBrush}"><Grid><FontIcon Glyph="&#xE8B7;" FontSize="32" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/><local:CenteredCover Source="{x:Bind FrontImage, Converter={StaticResource CoverImage}, ConverterParameter=320}"/></Grid></Border>
+            <FontIcon Glyph="&#xE8B7;" FontSize="64" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Visibility="{x:Bind HasContents, Mode=OneWay, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
+            <Grid Visibility="{x:Bind HasContents, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
+            <Border Width="174" Height="98" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="26,3,0,0" CornerRadius="6" Background="{ThemeResource ControlAltFillColorSecondaryBrush}"><local:CenteredCover Source="{x:Bind BackImage, Mode=OneWay, Converter={StaticResource CoverImage}, ConverterParameter=320}"/></Border>
+            <Border Width="184" Height="104" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14,14,0,0" CornerRadius="6" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource ControlAltFillColorSecondaryBrush}"><local:CenteredCover Source="{x:Bind MiddleImage, Mode=OneWay, Converter={StaticResource CoverImage}, ConverterParameter=320}"/></Border>
+            <Border Width="196" Height="110" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="2,26,0,0" CornerRadius="6" Background="{ThemeResource ControlAltFillColorSecondaryBrush}"><Grid><FontIcon Glyph="&#xE8B7;" FontSize="32" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/><local:CenteredCover Source="{x:Bind FrontImage, Mode=OneWay, Converter={StaticResource CoverImage}, ConverterParameter=320}"/></Grid></Border>
             </Grid>
            </Grid>
            <TextBlock Grid.Row="1" Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" Margin="0,8,0,4"/>
-           <TextBlock Grid.Row="2" Text="{x:Bind Detail}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+           <TextBlock Grid.Row="2" Text="{x:Bind Detail, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
           </Grid>
          </Border>
         </DataTemplate></GridView.ItemTemplate>
        </GridView>
        <ListView x:Name="FolderList" CanDragItems="True" CanReorderItems="True" AllowDrop="True" DragItemsStarting="FolderDragStarting" DragItemsCompleted="FolderDragCompleted" DragOver="FolderDragOver" Margin="20,0,20,16" ItemsSource="{x:Bind ViewModel.Folders}" SelectionMode="None" IsItemClickEnabled="True" ItemClick="FolderClicked" RightTapped="FolderRightTapped" Visibility="{x:Bind ViewModel.IsFolderListView, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
         <ListView.ItemTemplate><DataTemplate x:DataType="core:Folder"><Grid Padding="4,10" ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="72"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-         <Border Width="72" Height="48" CornerRadius="4" Background="{ThemeResource ControlAltFillColorSecondaryBrush}"><Grid><FontIcon Glyph="&#xE8B7;"/><local:CenteredCover Source="{x:Bind FrontImage, Converter={StaticResource CoverImage}, ConverterParameter=320}"/></Grid></Border>
-         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4"><TextBlock Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{x:Bind Detail}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
+         <Border Width="72" Height="48" CornerRadius="4" Background="{ThemeResource ControlAltFillColorSecondaryBrush}"><Grid><FontIcon Glyph="&#xE8B7;"/><local:CenteredCover Source="{x:Bind FrontImage, Mode=OneWay, Converter={StaticResource CoverImage}, ConverterParameter=320}"/></Grid></Border>
+         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4"><TextBlock Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{x:Bind Detail, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
         </Grid></DataTemplate></ListView.ItemTemplate>
        </ListView>
        <Grid Visibility="{x:Bind ViewModel.IsHomeGridView, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
@@ -254,12 +265,12 @@
        </Grid>
        <ListView x:Name="UploaderList" IncrementalLoadingTrigger="Edge" IncrementalLoadingThreshold="1" DataFetchSize="1" Margin="20,0,20,16" ItemsSource="{x:Bind ViewModel.Uploaders}" SelectionMode="None" IsItemClickEnabled="True" ItemClick="UploaderClicked" Visibility="{x:Bind ViewModel.IsUploaderListView, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
         <ListView.ItemTemplate><DataTemplate x:DataType="core:Uploader"><Grid Padding="8,12" ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-         <PersonPicture Width="64" Height="64" ProfilePicture="{x:Bind Avatar, Converter={StaticResource CoverImage}, ConverterParameter=160}"/>
+         <PersonPicture Width="64" Height="64" ProfilePicture="{x:Bind Avatar, Converter={StaticResource AvatarImage}, ConverterParameter=160}"/>
          <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center"><TextBlock Text="{x:Bind Name}" Style="{StaticResource BodyStrongTextBlockStyle}"/><TextBlock Text="{x:Bind Detail}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><TextBlock Text="{x:Bind Signature}" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
         </Grid></DataTemplate></ListView.ItemTemplate>
        </ListView>
        <GridView x:Name="UploaderGrid" Margin="20,0,20,16" ItemsSource="{x:Bind ViewModel.Uploaders}" SelectionMode="None" IsItemClickEnabled="True" ItemClick="UploaderClicked" IncrementalLoadingTrigger="Edge" IncrementalLoadingThreshold="1" DataFetchSize="1" Visibility="{x:Bind ViewModel.IsUploaderGridView, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
-        <GridView.ItemTemplate><DataTemplate x:DataType="core:Uploader"><StackPanel Width="200" Padding="12" Spacing="10"><PersonPicture Width="112" Height="112" ProfilePicture="{x:Bind Avatar, Converter={StaticResource CoverImage}, ConverterParameter=256}"/><TextBlock Text="{x:Bind Name}" TextAlignment="Center" TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}"/><TextBlock Text="{x:Bind Detail}" TextAlignment="Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"/></StackPanel></DataTemplate></GridView.ItemTemplate>
+        <GridView.ItemTemplate><DataTemplate x:DataType="core:Uploader"><StackPanel Width="200" Padding="12" Spacing="10"><PersonPicture Width="112" Height="112" ProfilePicture="{x:Bind Avatar, Converter={StaticResource AvatarImage}, ConverterParameter=256}"/><TextBlock Text="{x:Bind Name}" TextAlignment="Center" TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}"/><TextBlock Text="{x:Bind Detail}" TextAlignment="Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"/></StackPanel></DataTemplate></GridView.ItemTemplate>
        </GridView>
        <ListView x:Name="PlaylistList" Margin="20,0,20,0" ItemsSource="{x:Bind ViewModel.Queue}" SelectionMode="None" IsItemClickEnabled="True" ItemClick="TrackItemClicked" RightTapped="TrackRightTapped" ItemTemplate="{StaticResource PlaylistTrackTemplate}" Visibility="{x:Bind ViewModel.IsPlaylistView, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
        <ListView x:Name="DownloadsList" Margin="20,0,20,16" ItemsSource="{x:Bind ViewModel.Downloads}" SelectionMode="None" Visibility="{x:Bind ViewModel.IsDownloadingView, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
@@ -290,12 +301,14 @@
          <ComboBox x:Name="AppThemeBox" Header="应用主题" SelectedIndex="{x:Bind ViewModel.ThemeIndex, Mode=TwoWay}" MinWidth="260"><x:String>使用系统设置</x:String><x:String>浅色</x:String><x:String>深色</x:String></ComboBox>
          <ComboBox x:Name="CloseBehaviorBox" Header="关闭窗口时" SelectedIndex="{x:Bind ViewModel.CloseBehaviorIndex, Mode=TwoWay}" MinWidth="260"><x:String>最小化到托盘</x:String><x:String>退出应用</x:String><x:String>暂停歌曲并最小化到托盘</x:String></ComboBox>
          <ToggleSwitch x:Name="RecordHistorySwitch" Header="记录历史" OnContent="开" OffContent="关" IsOn="{x:Bind ViewModel.RecordRecentPlays, Mode=TwoWay}"/>
+         <ToggleSwitch x:Name="RecordSearchHistorySwitch" Header="记录搜索历史" OnContent="开" OffContent="关" IsOn="{x:Bind ViewModel.RecordSearchHistory, Mode=TwoWay}"/>
          <ComboBox x:Name="SingleClickBehaviorBox" Header="单击曲目" SelectedIndex="{x:Bind ViewModel.SingleClickBehaviorIndex, Mode=TwoWay}" MinWidth="260"><x:String>追加并播放</x:String><x:String>替换并播放</x:String><x:String>每次询问</x:String></ComboBox>
          <ComboBox x:Name="DoubleClickBehaviorBox" Header="双击曲目" SelectedIndex="{x:Bind ViewModel.DoubleClickBehaviorIndex, Mode=TwoWay}" MinWidth="260"><x:String>追加并播放</x:String><x:String>替换并播放</x:String><x:String>每次询问</x:String></ComboBox>
          <StackPanel x:Name="DownloadFolderSetting" Spacing="8"><TextBlock Text="下载文件夹"/><TextBlock Text="{x:Bind ViewModel.CacheDirectory, Mode=OneWay}" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><Button Content="选择文件夹" Click="ChooseCacheFolderClick"/></StackPanel>
          <StackPanel x:Name="ImageCacheSetting" Spacing="8"><TextBlock Text="图片缓存"/><Button x:Name="ClearImageCacheButton" Content="清除缓存" Click="ClearImageCacheClick"/></StackPanel>
         </StackPanel>
-         <Border x:Name="AboutCard" Grid.Column="1" Padding="20" CornerRadius="8" BorderThickness="1" VerticalAlignment="Top" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+         <StackPanel x:Name="AboutPanel" Grid.Column="1" VerticalAlignment="Top" Spacing="12">
+         <Border x:Name="AboutCard" Padding="20" CornerRadius="8" BorderThickness="1" VerticalAlignment="Top" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
           <StackPanel Spacing="20">
            <TextBlock Text="关于" Style="{StaticResource BodyStrongTextBlockStyle}"/>
            <StackPanel Spacing="6">
@@ -316,14 +329,16 @@
            </StackPanel>
           </StackPanel>
          </Border>
+         <Button x:Name="ViewAgreementButton" Content="查看用户协议与隐私政策" Click="ViewAgreementClick" HorizontalAlignment="Stretch"/>
+         </StackPanel>
         </Grid>
        </ScrollViewer>
-       <ScrollViewer x:Name="NotificationsScroller" Padding="28,0,28,24" HorizontalContentAlignment="Stretch" Visibility="{x:Bind ViewModel.IsNotificationsView, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
+       <ScrollViewer x:Name="NotificationsScroller" SizeChanged="NotificationViewportSizeChanged" Padding="28,0,28,24" HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled" HorizontalContentAlignment="Stretch" Visibility="{x:Bind ViewModel.IsNotificationsView, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
         <StackPanel x:Name="NotificationsPanel" Spacing="16" MaxWidth="860" HorizontalAlignment="Left">
-         <Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="查看私信、点赞、回复与系统通知" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/><Button Grid.Column="1" Content="刷新" Click="RefreshNotificationsClick"/></Grid>
-         <RadioButtons x:Name="NotificationCategoryPicker" MaxColumns="5" SelectedIndex="{x:Bind ViewModel.NotificationCategoryIndex, Mode=TwoWay}"><x:String>全部</x:String><x:String>私信</x:String><x:String>收到的赞</x:String><x:String>回复与@</x:String><x:String>系统通知</x:String></RadioButtons>
-         <Grid MinHeight="160"><ListView x:Name="NotificationList" ItemsSource="{x:Bind ViewModel.VisibleNotifications, Mode=OneWay}" ItemTemplate="{StaticResource NotificationTemplate}" SelectionMode="None" IsItemClickEnabled="False"/><StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" IsHitTestVisible="False" Visibility="{x:Bind ViewModel.NotificationsEmpty, Mode=OneWay, Converter={StaticResource VisibleWhen}}"><FontIcon Glyph="&#xE715;" FontSize="30" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><TextBlock Text="{x:Bind ViewModel.NotificationsStatus, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center"/></StackPanel><ProgressRing Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Top" IsActive="{x:Bind ViewModel.IsNotificationsLoading, Mode=OneWay}"/></Grid>
-         <TextBlock Text="{x:Bind ViewModel.NotificationsStatus, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Visibility="{x:Bind ViewModel.NotificationsEmpty, Mode=OneWay, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
+         <RadioButtons x:Name="NotificationCategoryPicker" MaxColumns="4" SelectedIndex="{x:Bind ViewModel.NotificationCategoryIndex, Mode=TwoWay}"><x:String>私信</x:String><x:String>收到的赞</x:String><x:String>回复与@</x:String><x:String>系统通知</x:String></RadioButtons>
+         <StackPanel x:Name="NotificationLoadingRow" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,4,0,0" Visibility="{x:Bind ViewModel.IsNotificationsLoading, Mode=OneWay, Converter={StaticResource VisibleWhen}}"><ProgressRing Width="20" Height="20" IsActive="{x:Bind ViewModel.IsNotificationsLoading, Mode=OneWay}"/><TextBlock Text="正在读取通知…" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
+         <Grid MinHeight="160"><ListView x:Name="NotificationList" ItemsSource="{x:Bind ViewModel.VisibleNotifications, Mode=OneWay}" ItemTemplate="{StaticResource NotificationTemplate}" SelectionMode="None" IsItemClickEnabled="False"><ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0"/></Style></ListView.ItemContainerStyle></ListView><StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" IsHitTestVisible="False" Visibility="{x:Bind ViewModel.NotificationsEmpty, Mode=OneWay, Converter={StaticResource VisibleWhen}}"><FontIcon Glyph="&#xE715;" FontSize="30" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><TextBlock Text="{x:Bind ViewModel.NotificationEmptyText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center"/></StackPanel></Grid>
+         <TextBlock Text="{x:Bind ViewModel.NotificationsStatus, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Visibility="{x:Bind ViewModel.HasNotificationStatus, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
         </StackPanel>
        </ScrollViewer>
       </Grid>

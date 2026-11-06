@@ -5,136 +5,167 @@ namespace BiliPlay.Core;
 
 public sealed partial class BilibiliClient
 {
-    /// <summary>读取私信、点赞、回复/@ 和系统通知。接口结构变化时仍尽量保留可识别的嵌套消息。</summary>
+    public IReadOnlyList<string> NotificationReadWarnings { get; private set; } = [];
+
+    // These are read-only endpoints used by message.bilibili.com's message-pc
+    // client. Each feed has its own cursor; page numbers are not interchangeable.
     public async Task<IReadOnlyList<AccountNotification>> GetNotificationsAsync(CancellationToken ct = default)
     {
         RequireAccount();
-        var requests = new (string Category, string Path, Dictionary<string, string>? Args)[]
+        var sources = new[] { "session", "like", "reply", "at", "system", "user-system" };
+        var feeds = await Task.WhenAll(sources.Select(source => ReadNotificationSourceAsync(source, ct)));
+        ct.ThrowIfCancellationRequested();
+        NotificationReadWarnings = feeds.Where(feed => feed.Error.Length > 0).Select(feed => feed.Error).ToArray();
+        return feeds.SelectMany(feed => feed.Items)
+            .GroupBy(item => item.Id, StringComparer.Ordinal)
+            .Select(group => group.OrderByDescending(item => item.Timestamp).ThenByDescending(item => item.ActorCount).First())
+            .OrderByDescending(item => item.Timestamp).ToArray();
+    }
+
+    private async Task<(IReadOnlyList<AccountNotification> Items, string Error)> ReadNotificationSourceAsync(string source, CancellationToken ct)
+    {
+        var items = new List<AccountNotification>();
+        var args = new Dictionary<string, string> { ["build"] = "0", ["mobi_app"] = "web", ["platform"] = "web" };
+        var path = source switch
         {
-            ("私信", "x/msgfeed/session", new() { ["session_type"] = "1", ["group_id"] = "0", ["sort_rule"] = "2" }),
-            ("收到的赞", "x/msgfeed/like", new() { ["build"] = "0", ["mobi_app"] = "web" }),
-            ("回复与@", "x/msgfeed/reply", new() { ["build"] = "0", ["mobi_app"] = "web" }),
-            ("系统通知", "x/sys-msg/query", new() { ["mobi_app"] = "web", ["build"] = "0" })
+            "session" => "https://api.vc.bilibili.com/session_svr/v1/session_svr/get_sessions",
+            "system" => "https://message.bilibili.com/x/sys-msg/query_unified_notify",
+            "user-system" => "https://message.bilibili.com/x/sys-msg/query_user_notify",
+            _ => "x/msgfeed/" + source
         };
-        var result = new List<AccountNotification>();
-        Exception? last = null;
-        foreach (var request in requests)
+        if (source == "session")
+        { args["session_type"] = "1"; args["sort_rule"] = "2"; args["size"] = "20"; }
+        else if (source is "system" or "user-system") args["page_size"] = "20";
+        string? previousCursor = null;
+        try
         {
-            try
+            for (var page = 0; page < 10; page++)
             {
-                for (var page = 1; page <= 3; page++)
+                ct.ThrowIfCancellationRequested();
+                var data = await GetAsync(path, args, false, ct);
+                foreach (var row in NotificationRows(source, data))
                 {
-                    var args = request.Args is null ? new Dictionary<string, string>() : new(request.Args);
-                    args["pn"] = page.ToString(CultureInfo.InvariantCulture);
-                    args["ps"] = "20";
-                    var data = await GetAsync(request.Path, args, false, ct);
-                    var pageItems = ParseNotifications(request.Category, data).ToArray();
-                    result.AddRange(pageItems);
-                    if (!HasMore(data) || pageItems.Length < 20) break;
+                    var notification = ParseNotification(source, row);
+                    if (notification is not null) items.Add(notification);
                 }
+                var cursor = source == "like" ? data.O("total").O("cursor") : data.O("cursor");
+                string next;
+                if (source == "session")
+                {
+                    if (!data.B("has_more")) break;
+                    next = data.O("session_list").A().LastOrDefault().S("session_ts");
+                    args["end_ts"] = next;
+                }
+                else if (source is "system" or "user-system")
+                {
+                    var rows = NotificationRows(source, data).ToArray();
+                    next = rows.LastOrDefault().S("cursor");
+                    if (next.Length == 0) break;
+                    path = "https://message.bilibili.com/x/sys-msg/query_notify_list";
+                    args["cursor"] = next; args["data_type"] = "1";
+                }
+                else
+                {
+                    if (cursor.ValueKind != JsonValueKind.Object || cursor.B("is_end")) break;
+                    var id = cursor.S("id"); var time = cursor.S("time");
+                    if (id.Length == 0 || time.Length == 0) break;
+                    next = id + ":" + time;
+                    args["id"] = id; args[source + "_time"] = time;
+                }
+                if (next.Length == 0 || next == previousCursor) break;
+                previousCursor = next;
             }
-            catch (Exception error) when (error is BilibiliException or HttpRequestException or InvalidDataException or JsonException or TaskCanceledException)
-            { last = error; }
+            return (items, "");
         }
-        if (result.Count == 0 && last is not null && !ct.IsCancellationRequested) throw last;
-        return result
-            .Where(item => !string.IsNullOrWhiteSpace(item.Title) || !string.IsNullOrWhiteSpace(item.Content))
-            .GroupBy(item => $"{item.Category}\u001f{item.Title}\u001f{item.Content}\u001f{item.Time}", StringComparer.Ordinal)
-            .Select(group => group.First())
-            .OrderByDescending(item => ParseTime(item.Time))
-            .Take(400)
-            .ToArray();
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception error) when (error is BilibiliException or HttpRequestException or JsonException or InvalidDataException or OperationCanceledException)
+        { return (items, source switch { "session" => "私信", "system" or "user-system" => "系统通知", "like" => "点赞", "at" => "@", _ => "回复" }); }
     }
 
-    private static IEnumerable<AccountNotification> ParseNotifications(string category, JsonElement data)
+    private static IEnumerable<JsonElement> NotificationRows(string source, JsonElement data) => source switch
     {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var item in EnumerateMessageObjects(data))
-        {
-            var user = FirstObject(item, "user", "sender", "author", "upper");
-            var nested = FirstObject(item, "item", "last_msg", "message", "reply");
-            var name = FirstText(item, "uname", "name", "username") is { Length: > 0 } direct ? direct : FirstText(user, "uname", "name", "username");
-            if (name.Length == 0) name = FirstText(nested, "uname", "name");
-            var title = category == "私信" ? (name.Length > 0 ? name : "私信") :
-                FirstText(item, "title", "desc", "type_name", "action") is { Length: > 0 } heading ? heading : category;
-            var content = FirstText(item, "content", "msg", "text", "message", "desc", "summary");
-            if (content.Length == 0) content = FirstText(nested, "title", "content", "desc", "text", "summary");
-            var avatar = FirstText(item, "face", "avatar", "upic") is { Length: > 0 } image ? image : FirstText(user, "face", "avatar", "upic");
-            if (avatar.Length == 0) avatar = FirstText(nested, "face", "avatar");
-            var time = FirstText(item, "ctime", "timestamp", "pub_time", "mtime", "time", "create_time");
-            if (time.Length == 0) time = FirstText(nested, "ctime", "timestamp", "pub_time", "mtime", "time");
-            var url = FirstText(item, "uri", "url", "link");
-            if (url.Length == 0) url = FirstText(nested, "uri", "url", "link");
-            if (title.Length == 0 && content.Length == 0) continue;
-            var key = $"{category}\u001f{title}\u001f{content}\u001f{time}";
-            if (seen.Add(key)) yield return new(category, title, Text.Clean(content), FormatNotificationTime(time), avatar, url);
-        }
-    }
+        "session" => data.O("session_list").A(),
+        "like" => data.O("latest").O("items").A().Concat(data.O("total").O("items").A()),
+        "system" or "user-system" => data.ValueKind == JsonValueKind.Array ? data.A() : data.O("system_notify_list").A(),
+        _ => data.O("items").A()
+    };
 
-    private static IEnumerable<JsonElement> EnumerateMessageObjects(JsonElement value, int depth = 0)
+    private static AccountNotification? ParseNotification(string source, JsonElement row)
     {
-        if (depth > 6) yield break;
-        if (value.ValueKind == JsonValueKind.Array)
+        var system = source is "system" or "user-system";
+        var category = source == "session" ? "私信" : system ? "系统通知" : "回复与@";
+        var target = row.O("item");
+        var users = row.O("users").A().ToArray();
+        if (users.Length == 0 && row.O("user").ValueKind == JsonValueKind.Object) users = [row.O("user")];
+        if (users.Length == 0 && row.O("talker_info").ValueKind == JsonValueKind.Object) users = [row.O("talker_info")];
+        var names = users.Select(user => NotificationText(user, "nickname", "uname", "name")).Where(name => name.Length > 0).Take(2).ToArray();
+        var avatars = users.Select(user => NotificationImage(NotificationText(user, "avatar", "face", "pic_url")))
+            .Where(url => url.Length > 0).Take(2).ToArray();
+        var title = names.Length > 0 ? string.Join("、", names) : source == "session" ? "UID " + row.S("talker_id") : system ? NotificationText(row, "title", "name") : "用户";
+        var kind = NotificationText(target, "business");
+        if (kind.Length == 0) kind = target.S("type") switch { "danmu" => "弹幕", "reply" => "评论", "video" => "视频", _ => "内容" };
+        var count = (int)Math.Clamp(Math.Max(row.N("counts"), users.Length), 1, int.MaxValue);
+        var content = source == "session" ? NotificationText(row.O("last_msg"), "content")
+            : system ? NotificationText(row, "content", "content_text", "text") : NotificationText(target, "source_content");
+        var action = source == "like" ? (NotificationText(row, "action", "action_name").Contains("收藏", StringComparison.Ordinal) ? "收藏了" : "赞了") : "";
+        if (source is "reply" or "at") title += (count > 1 ? $" 等共 {count} 人" : "") + (source == "at" ? $" 在{kind}中 @ 了我" : $" 回复了我的{kind}");
+        var time = source switch
         {
-            foreach (var child in value.EnumerateArray())
-                foreach (var item in EnumerateMessageObjects(child, depth + 1)) yield return item;
-            yield break;
-        }
-        if (value.ValueKind != JsonValueKind.Object) yield break;
-        if (LooksLikeMessage(value)) yield return value;
-        foreach (var property in value.EnumerateObject())
-        {
-            if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
-                foreach (var item in EnumerateMessageObjects(property.Value, depth + 1)) yield return item;
-        }
+            "like" => row.S("like_time"), "reply" => row.S("reply_time"), "at" => row.S("at_time"),
+            "session" => row.S("session_ts"), _ => NotificationText(row, "time_at", "notify_time", "ctime", "cursor", "time")
+        };
+        var stamp = NotificationTimestamp(time);
+        var id = source == "session" ? row.S("talker_id") : row.S("id");
+        // Do not manufacture messages out of nested user/target objects. A row
+        // without both an identity and readable content is not a notification.
+        if (id.Length == 0 && content.Length == 0) return null;
+        var image = kind is "评论" or "弹幕" ? "" : NotificationImage(NotificationText(target, "image", "cover", "pic"));
+        var targetText = NotificationText(target, "title", "target_reply_content", "target_content");
+        var url = NotificationText(target, "uri", "url");
+        var key = system ? "system" : source;
+        return new(category, title, content, FormatNotificationTime(stamp, time), avatars.FirstOrDefault() ?? "", url,
+            source == "like", image, targetText, kind, count, avatars, action,
+            key + ":" + (id.Length > 0 ? id : title + ":" + time), stamp);
     }
 
-    private static bool LooksLikeMessage(JsonElement value)
-        => new[] { "content", "msg", "text", "title", "desc", "ctime", "timestamp", "pub_time", "mtime", "uname", "user" }
-            .Any(name => value.TryGetProperty(name, out var child) && child.ValueKind != JsonValueKind.Null);
-
-    private static JsonElement FirstObject(JsonElement value, params string[] names)
+    private static string NotificationImage(string value)
     {
-        foreach (var name in names)
-        {
-            var child = value.O(name);
-            if (child.ValueKind == JsonValueKind.Object) return child;
-        }
-        return default;
+        try { var uri = Text.Https(value); return Text.IsMediaHost(uri) ? uri.AbsoluteUri : ""; }
+        catch (InvalidDataException) { return ""; }
     }
 
-    private static string FirstText(JsonElement value, params string[] names)
+    private static string NotificationText(JsonElement value, params string[] names)
     {
         if (value.ValueKind != JsonValueKind.Object) return "";
         foreach (var name in names)
         {
-            if (!value.TryGetProperty(name, out var child) || child.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) continue;
-            if (child.ValueKind is JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False)
+            var node = value.O(name);
+            if (node.ValueKind is not (JsonValueKind.String or JsonValueKind.Number)) continue;
+            var text = node.ToString();
+            if (text.Length == 0) continue;
+            if (text.StartsWith('{'))
             {
-                var text = child.ToString();
-                if (!string.IsNullOrWhiteSpace(text)) return Text.Clean(text);
+                try
+                {
+                    using var json = JsonDocument.Parse(text);
+                    return NotificationText(json.RootElement, "content", "text", "title");
+                }
+                catch (JsonException) { }
             }
-            if (child.ValueKind == JsonValueKind.Object)
-            {
-                var nested = FirstText(child, "text", "content", "title", "desc", "name", "uname");
-                if (nested.Length > 0) return nested;
-            }
+            return Text.Clean(text);
         }
         return "";
     }
 
-    private static bool HasMore(JsonElement data) => data.B("has_more") || data.B("hasMore") || data.N("next_page") > 0;
-
-    private static string FormatNotificationTime(string value)
+    private static long NotificationTimestamp(string time)
     {
-        if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var epoch))
-        {
-            if (epoch > 10_000_000_000) epoch /= 1000;
-            try { return DateTimeOffset.FromUnixTimeSeconds(epoch).ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture); } catch { }
-        }
-        return value;
+        if (long.TryParse(time, NumberStyles.Integer, CultureInfo.InvariantCulture, out var stamp))
+        { while (stamp > 100_000_000_000) stamp /= 1000; return stamp; }
+        return DateTimeOffset.TryParse(time, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var parsed) ? parsed.ToUnixTimeSeconds() : 0;
     }
-
-    private static DateTimeOffset ParseTime(string value)
-        => DateTimeOffset.TryParse(value, CultureInfo.CurrentCulture, DateTimeStyles.AssumeLocal, out var time) ? time : DateTimeOffset.MinValue;
+    private static string FormatNotificationTime(long stamp, string fallback)
+    {
+        try { return stamp > 0 ? DateTimeOffset.FromUnixTimeSeconds(stamp).ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : fallback; }
+        catch (ArgumentOutOfRangeException) { return fallback; }
+    }
 }

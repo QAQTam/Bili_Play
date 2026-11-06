@@ -85,9 +85,14 @@ public sealed partial class MainPage
             ViewModel.SearchGridMode=false;Check(ViewModel.IsUploaderListView&&!ViewModel.IsUploaderGridView,"UP 主列表视图切换失败");ViewModel.SearchCategoryIndex=0;
             ViewModel.Navigate("settings");
             await BiliPlay.Services.ArtworkCache.ClearAsync();Check(ClearImageCacheButton.Content as string=="清除缓存","图片缓存入口缺失");
-            Check(SettingsOptions.Children.SequenceEqual(new UIElement[]{AppThemeBox,CloseBehaviorBox,RecordHistorySwitch,SingleClickBehaviorBox,DoubleClickBehaviorBox,DownloadFolderSetting,ImageCacheSetting}),"设置顺序不符合要求");
+            Check(SettingsOptions.Children.SequenceEqual(new UIElement[]{AppThemeBox,CloseBehaviorBox,RecordHistorySwitch,RecordSearchHistorySwitch,SingleClickBehaviorBox,DoubleClickBehaviorBox,DownloadFolderSetting,ImageCacheSetting}),"设置顺序不符合要求");
             Check(RecordHistorySwitch.Header as string=="记录历史"&&ViewModel.AppVersion==AboutVersion.Text&&Version.TryParse(AboutVersion.Text,out _),"关于信息版本或记录历史文案不正确");
             Check(AuthorGitHubLink.NavigateUri.AbsoluteUri=="https://github.com/soda-rx"&&ProjectGitHubLink.NavigateUri.AbsoluteUri=="https://github.com/soda-rx/Bili_Play","关于中的 GitHub 链接不正确");
+            Check(ViewAgreementButton.Content as string=="查看用户协议与隐私政策"&&AgreementBody().Content is TextBlock agreement&&agreement.Text==BiliPlay.Services.UserAgreement.Text,"关于下面没有完整协议查看入口");
+            var searchPreference=ViewModel.RecordSearchHistory;
+            RecordSearchHistorySwitch.IsOn=false;
+            Check(!ViewModel.RecordSearchHistory&&!ViewModel.Store.RecordSearchHistory&&ViewModel.SearchHistory.Count==0,"关闭搜索历史没有生效");
+            RecordSearchHistorySwitch.IsOn=searchPreference;
             SettingsScroller.ChangeView(null,SettingsScroller.ScrollableHeight,null,true);await Task.Delay(80);UpdateLayout();
             await SaveVisualAsync(System.IO.Path.Combine(directory,"settings-about.png"));
             await VerifyAboutSidebarLayoutAsync(directory);
@@ -114,12 +119,12 @@ public sealed partial class MainPage
                 var options=SettingsOptions.TransformToVisual(SettingsLayout).TransformPoint(new(0,0));
                 if(width==1280)
                 {
-                    Check(Grid.GetColumn(AboutCard)==1&&Grid.GetRow(AboutCard)==0&&card.X>=options.X+SettingsOptions.ActualWidth+24,"关于没有显示在设置内容右侧");
+                    Check(Grid.GetColumn(AboutPanel)==1&&Grid.GetRow(AboutPanel)==0&&card.X>=options.X+SettingsOptions.ActualWidth+24,"关于没有显示在设置内容右侧");
                     Check(Math.Abs(AboutCard.ActualWidth-280)<1&&Math.Abs(card.Y-options.Y)<1,"右侧关于卡片宽度或顶部对齐不正确");
                 }
                 else
                 {
-                    Check(Grid.GetColumn(AboutCard)==0&&Grid.GetRow(AboutCard)==1,"窄窗口没有将关于卡片放在设置项下方");
+                    Check(Grid.GetColumn(AboutPanel)==0&&Grid.GetRow(AboutPanel)==1,"窄窗口没有将关于卡片放在设置项下方");
                     Check(card.Y>=options.Y+SettingsOptions.ActualHeight+20&&AboutCard.ActualWidth<=SettingsLayout.ActualWidth+1,"窄窗口关于卡片覆盖设置项或超出边界");
                     SettingsScroller.ChangeView(null,SettingsScroller.ScrollableHeight,null,true);await Task.Delay(80);
                 }

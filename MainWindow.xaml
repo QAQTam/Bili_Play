@@ -15,7 +15,7 @@
 
     <Grid x:Name="WindowRoot" Background="{ThemeResource AppCanvasBrush}">
         <Grid.Resources>
-            <local:UrlImageConverter x:Key="SocialAvatar"/>
+            <local:AvatarImageConverter x:Key="SocialAvatar"/>
             <DataTemplate x:Key="SocialUserTemplate">
                 <Grid Padding="8,10" ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                     <PersonPicture Width="48" Height="48" ProfilePicture="{Binding Avatar, Converter={StaticResource SocialAvatar}, ConverterParameter=96}"/>

@@ -14,19 +14,43 @@ public sealed record SocialUser(long Id, string Name, string Avatar, string Sign
 {
     public string Url => $"https://space.bilibili.com/{Id}";
 }
-public sealed record AccountNotification(string Category, string Title, string Content, string Time, string Avatar = "", string Url = "")
+public sealed record AccountNotification(string Category, string Title, string Content, string Time, string Avatar = "", string Url = "",
+    bool IsLike = false, string TargetImage = "", string TargetText = "", string TargetKind = "内容", int ActorCount = 1,
+    IReadOnlyList<string>? ActorAvatars = null, string Action = "", string Id = "", long Timestamp = 0)
 {
-    public string Summary => string.IsNullOrWhiteSpace(Content) ? Title : Content;
+    public IReadOnlyList<string> Avatars => ActorAvatars is { Count: > 0 } ? ActorAvatars : [Avatar];
+    public string AvatarOne => Avatars.ElementAtOrDefault(0) ?? "";
+    public string AvatarTwo => Avatars.ElementAtOrDefault(1) ?? "";
+    public bool HasAvatarTwo => !string.IsNullOrWhiteSpace(AvatarTwo);
+    public bool HasTargetImage => !string.IsNullOrWhiteSpace(TargetImage);
+    public bool HasTarget => HasTargetImage || !string.IsNullOrWhiteSpace(TargetText);
+    public bool HasContent => !IsLike && !string.IsNullOrWhiteSpace(Content);
+    public string Summary => Limit(IsLike ? $"{Title}{(ActorCount > 1 ? $" 等共 {ActorCount} 人" : " ")}{(Action.Length > 0 ? Action : "赞了")}我的{TargetKind}" : Title, 120);
+    public string Excerpt => Limit(Content, 160);
+    public string TargetExcerpt => Limit(TargetText, 48);
+    private static string Limit(string text, int length) => text.Length <= length ? text : text[..length] + "…";
 }
 public sealed record LoginCode(string Url, string Key);
 public sealed record Folder(long Id, string Title, int Count, bool Owned, bool IsPrivate = false,
-    string Intro = "", string Cover = "", string CoverBack = "", string CoverMiddle = "")
+    string Intro = "", string Cover = "", string CoverBack = "", string CoverMiddle = "") : System.ComponentModel.INotifyPropertyChanged
 {
-    public string Detail => $"{Count} 个视频 · {(Owned ? IsPrivate ? "私密" : "公开" : "订阅 · 只读")}";
-    public bool HasContents => Count > 0;
-    public string FrontImage => HasContents ? Thumbnail(Cover) : "";
-    public string MiddleImage => Thumbnail(string.IsNullOrEmpty(CoverMiddle) ? Cover : CoverMiddle);
-    public string BackImage => Thumbnail(string.IsNullOrEmpty(CoverBack) ? Cover : CoverBack);
+    private sealed record PreviewState(int Count, bool IsPrivate, string Cover, string CoverMiddle, string CoverBack);
+    private PreviewState? _preview;
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    public string Detail => $"{_preview?.Count ?? Count} 个视频 · {(Owned ? (_preview?.IsPrivate ?? IsPrivate) ? "私密" : "公开" : "订阅 · 只读")}";
+    public bool HasContents => (_preview?.Count ?? Count) > 0;
+    public string FrontImage => HasContents ? Thumbnail(_preview?.Cover ?? Cover) : "";
+    public string MiddleImage => Thumbnail(string.IsNullOrEmpty(_preview?.CoverMiddle ?? CoverMiddle) ? _preview?.Cover ?? Cover : _preview?.CoverMiddle ?? CoverMiddle);
+    public string BackImage => Thumbnail(string.IsNullOrEmpty(_preview?.CoverBack ?? CoverBack) ? _preview?.Cover ?? Cover : _preview?.CoverBack ?? CoverBack);
+    public void ApplyPreview(Folder preview)
+    {
+        var before = new[] { Detail, FrontImage, MiddleImage, BackImage, HasContents.ToString() };
+        _preview = new(preview.Count, preview.IsPrivate, preview.Cover, preview.CoverMiddle, preview.CoverBack);
+        var after = new[] { Detail, FrontImage, MiddleImage, BackImage, HasContents.ToString() };
+        var names = new[] { nameof(Detail), nameof(FrontImage), nameof(MiddleImage), nameof(BackImage), nameof(HasContents) };
+        for (var i = 0; i < names.Length; i++)
+            if (before[i] != after[i]) PropertyChanged?.Invoke(this, new(names[i]));
+    }
     private static string Thumbnail(string image) => string.IsNullOrEmpty(image) ? "" : Text.CoverImage(image, 640);
     public static bool IsPrivateAttribute(long attributes) => (attributes & 1) != 0;
     public override string ToString() => Title;

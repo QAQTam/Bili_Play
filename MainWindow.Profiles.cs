@@ -59,7 +59,7 @@ public sealed partial class MainWindow
     private static Microsoft.UI.Xaml.Media.ImageSource? ProfileAvatar(UserProfile profile)
     {
         if (string.IsNullOrWhiteSpace(profile.Avatar) || !Uri.TryCreate(profile.Avatar, UriKind.Absolute, out var uri)) return null;
-        return ArtworkCache.Create(uri, 96);
+        return ArtworkCache.CreateAvatar(uri, 96);
     }
     private async Task DeleteProfileAsync(UserProfile profile)
     {

@@ -134,7 +134,7 @@ public sealed partial class MainWindow : Window
     private void UpdateSearchSuggestions()
     {
         if (ViewModel is null || !ViewModel.IsLoggedIn || _historySuppressed || TitleSearch.Text.Trim() == _submittedSearchText) return;
-        var suggestions = ViewModel.SearchHistory.Where(s => s.Contains(TitleSearch.Text.Trim(), StringComparison.OrdinalIgnoreCase)).ToArray();
+        var suggestions = ViewModel.RecordSearchHistory ? ViewModel.SearchHistory.Where(s => s.Contains(TitleSearch.Text.Trim(), StringComparison.OrdinalIgnoreCase)).ToArray() : [];
         SearchHistoryItems.ItemsSource = suggestions;
         RequestSearchRecommendations(TitleSearch.Text.Trim());
     }

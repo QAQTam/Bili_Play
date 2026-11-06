@@ -78,14 +78,14 @@ public sealed partial class MainPage
             return;
         }
         AnimateFooterMetadata(new((float)(metadataBefore-metadataAfter+metadataMotion.Item1.X),0,0),metadataMotion.Item2);
-        _lyricsOpacityTween=AnimateTween(LyricsView,"Opacity",opacity.Item1,new(opening?1:0,0,0,0),opacity.Item2,opening?220:180);
+        _lyricsOpacityTween=AnimateTween(LyricsView,"Opacity",opacity.Item1,new(opening?1:0,0,0,0),opacity.Item2,opening?180:140);
         if (opening) LyricsEntrance(fresh);
         else
         {
             var column=_lyricsColumnTween?.Sample() ?? (Vector4.Zero,Vector4.Zero);
             _lyricsColumnTween=AnimateTween(LyricsColumn,"Translation",column.Item1,new(0,32,0,0),column.Item2,200);
         }
-        var milliseconds = opening ? 360 : 240;
+        var milliseconds = opening ? 260 : 190;
         if (source is { } transfer && target.Width > 0 && target.Height > 0)
         {
             var from=transfer.Bounds;

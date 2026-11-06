@@ -56,10 +56,16 @@ using(var store = new LocalStore(root))
     store.DeleteSearch(123,"周杰伦");
     Check(store.SearchHistory(123).SequenceEqual(new[]{"陈奕迅"}),"单条历史删除失败");
     Check(store.SearchHistory(456).Count == 1,"影响了另一个账号");
+    store.RecordSearchHistory=false;
+    store.RememberSearch(123,"不应记录的合成搜索");
+    Check(store.SearchHistory(123).Count==0,"关闭搜索历史后仍显示条目");
 }
 using(var reopened = new LocalStore(root))
 {
     Check(!reopened.RecordRecentPlays,"关闭最近播放的设置未持久化");
+    Check(!reopened.RecordSearchHistory,"搜索历史开关未持久化");
+    reopened.RecordSearchHistory=true;
+    Check(reopened.SearchHistory(123).SequenceEqual(new[]{"陈奕迅"}),"关闭搜索历史时仍记录搜索或破坏已有记录");
     reopened.SaveProgress(123,second,4);
     Check(reopened.History(123).Count == 1,"重启后关闭记录未生效");
     reopened.RecordRecentPlays = true;
@@ -158,6 +164,10 @@ async Task CheckBufferedAudioAsync()
     Check(Math.Abs(pausedReplacement.Player.PlaybackSession.PlaybackRate-1.75)<.01,"准备期间更改的倍速没有同步到新音质");
     Check(Math.Abs(pausedReplacement.Player.PlaybackSession.Position.TotalSeconds - 6) < .3, "准备期间拖动进度后仍使用旧位置");
     replacement.Player.Play();
+    // Play requests an asynchronous Windows media state transition. Establish the
+    // live baseline before testing cancellation of a different decoder.
+    for (var wait = 0; wait < 100 && replacement.Player.PlaybackSession.PlaybackState != Windows.Media.Playback.MediaPlaybackState.Playing; wait++) await Task.Delay(20);
+    Check(replacement.Player.PlaybackSession.PlaybackState == Windows.Media.Playback.MediaPlaybackState.Playing, "取消预加载测试前原音频尚未恢复播放");
     using var canceled = new AudioPlayback(new NativeAudioHandler(wave, 4000));
     using var cancellation = new CancellationTokenSource(150);
     try { await canceled.WarmMutedAsync(audio, cancellation.Token); throw new Exception("没有取消待切换音质"); }

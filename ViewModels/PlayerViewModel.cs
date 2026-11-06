@@ -84,7 +84,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     public ObservableCollection<DownloadJob> Downloads { get; } = [];
     private CancellationTokenSource _accountDownloads = new();
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsCachedView), nameof(IsDownloadingView), nameof(IsTrackListVisible), nameof(HasTrackContent), nameof(HasSelectedCacheTracks), nameof(DeleteSelectedCacheOpacity))]
+    [NotifyPropertyChangedFor(nameof(IsCachedView), nameof(IsDownloadingView), nameof(IsTrackListVisible), nameof(HasTrackContent), nameof(HasSelectedCacheTracks), nameof(DeleteSelectedCacheOpacity), nameof(CanSelectCachedTracks), nameof(CacheSelectionOpacity))]
     public partial int CacheTabIndex { get; set; }
     public bool IsCachedView => IsCacheView && CacheTabIndex == 0;
     public bool IsDownloadingView => IsCacheView && CacheTabIndex == 1;
@@ -122,6 +122,10 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     private bool _favoriteLoading;
     public string CurrentView => _view;
     public event Action? BrowseChanged;
+    public void ReplayBrowseEntrance()
+    {
+        if (IsLoggedIn && !IsLyricsOpen) BrowseChanged?.Invoke();
+    }
     [ObservableProperty]
     public partial bool IsCurrentFavorited { get; set; }
     [ObservableProperty]
@@ -247,23 +251,33 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     public string RefreshLabel => IsHomeView ? "换一批" : "刷新";
     public CommandBarOverflowButtonVisibility ToolbarOverflowVisibility => CommandBarOverflowButtonVisibility.Collapsed;
     public bool CanChooseView => IsHomeView || IsLibraryView || IsFolderView || IsSearchView;
-    public bool CanSelectCachedTracks => IsCachedView && Tracks.Count > 0;
+    public bool CanSelectCachedTracks => IsCachedView && !IsEmpty && Tracks.Count > 0;
+    public double CacheSelectionOpacity => CanSelectCachedTracks ? 1 : .35;
     [ObservableProperty] public partial bool IsFolderView { get; set; }
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasTracks))] public partial bool IsPlaylistView { get; set; }
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsCachedView), nameof(IsDownloadingView), nameof(IsTrackListVisible), nameof(HasTrackContent))]
+    [NotifyPropertyChangedFor(nameof(IsCachedView), nameof(IsDownloadingView), nameof(IsTrackListVisible), nameof(HasTrackContent), nameof(CanSelectCachedTracks), nameof(CacheSelectionOpacity))]
     public partial bool IsCacheView { get; set; }
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ReLoginVisibility))]
     public partial bool NeedsLogin { get; set; }
     public Visibility ReLoginVisibility => NeedsLogin ? Visibility.Visible : Visibility.Collapsed;
     [ObservableProperty] public partial bool IsSettingsView { get; set; }
-    [ObservableProperty] public partial bool IsEmpty { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSelectCachedTracks), nameof(CacheSelectionOpacity))]
+    public partial bool IsEmpty { get; set; }
+    partial void OnIsEmptyChanged(bool value) { if (value && IsCacheView) IsCacheSelectionMode=false; }
     [ObservableProperty] public partial string EmptyText { get; set; } = "暂无内容";
     public string AppVersion => typeof(App).Assembly.GetName().Version?.ToString(3) ?? "未知";
     [ObservableProperty] public partial int ThemeIndex { get; set; }
     [ObservableProperty] public partial bool RecordRecentPlays { get; set; } = true;
     partial void OnRecordRecentPlaysChanged(bool value) { if (Store is not null) Store.RecordRecentPlays = value; }
+    [ObservableProperty] public partial bool RecordSearchHistory { get; set; } = true;
+    partial void OnRecordSearchHistoryChanged(bool value)
+    {
+        Store.RecordSearchHistory = value;
+        Replace(SearchHistory, Client.Account is { } account ? Store.SearchHistory(account.Id) : []);
+    }
     [ObservableProperty]
     public partial bool CloseToTray { get; set; } = true;
     private int _closeBehaviorIndex;
@@ -354,7 +368,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         Tracks.FetchPage = Uploaders.FetchPage = FetchIncrementalPageAsync;
         Player = new(Client, App.DispatcherQueue);
         Lines.CollectionChanged += (_, _) => { OnPropertyChanged(nameof(HasLyrics)); OnPropertyChanged(nameof(IsSubtitleLoading)); UpdateSubtitleHighlight(); };
-        Tracks.CollectionChanged += (_, _) => { OnPropertyChanged(nameof(HasTracks)); OnPropertyChanged(nameof(CanSelectCachedTracks)); UpdateClearAvailability(); };
+        Tracks.CollectionChanged += (_, _) => { OnPropertyChanged(nameof(HasTracks)); OnPropertyChanged(nameof(CanSelectCachedTracks)); OnPropertyChanged(nameof(CacheSelectionOpacity)); UpdateClearAvailability(); };
         Folders.CollectionChanged += (_, _) => { if (IsLibraryView) IsEmpty = Folders.Count == 0; };
         Volume = double.TryParse(Store.GetSetting("volume", "75"), CultureInfo.InvariantCulture, out var volume) ? volume : 75;
         Player.Volume = Volume / 100;
@@ -365,6 +379,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         SingleClickBehaviorIndex = ReadTrackBehavior("singleClickBehavior", 0);
         DoubleClickBehaviorIndex = ReadTrackBehavior("doubleClickBehavior", 1);
         RecordRecentPlays = Store.RecordRecentPlays;
+        RecordSearchHistory = Store.RecordSearchHistory;
         CloseToTray = Store.GetSetting("closeToTray", "true") != "false";
         CloseBehaviorIndex = int.TryParse(Store.GetSetting("closeBehavior", CloseToTray ? "0" : "1"), out var behavior) ? behavior : 0;
         var savedDirectory = Store.GetSetting("cacheDirectory", DebugSession.DirectoryPath is { } debugRoot ? Path.Combine(debugRoot,"downloads") : DownloadService.CacheDirectory(0));
@@ -482,8 +497,9 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         ProfileManager.UpdateAccount(Client.Account);
         AccountUid = Client.Account.Id.ToString(); AccountLevel = $"Lv.{Client.Account.Level}";
         Replace(SearchHistory, Store.SearchHistory(Client.Account!.Id));
-        AccountAvatar = Uri.TryCreate(Client.Account.Avatar, UriKind.Absolute, out var avatar) ? ArtworkCache.Create(avatar,80) : null;
-        AccountLargeAvatar = avatar is not null ? ArtworkCache.Create(new Uri(avatar.GetLeftPart(UriPartial.Path).Split('@')[0] + "@320w_320h_1c.webp"),320) : null;
+        AccountAvatar = Uri.TryCreate(Client.Account.Avatar, UriKind.Absolute, out var avatar) ? ArtworkCache.CreateAvatar(avatar,80) : null;
+        AccountLargeAvatar = avatar is not null ? ArtworkCache.CreateAvatar(new Uri(avatar.GetLeftPart(UriPartial.Path).Split('@')[0] + "@320w_320h_1c.webp"),320) : null;
+        if(!App.IsVisualCheck && !DebugSession.IsActive) _ = ArtworkCache.WarmAsync(ProfileManager.WithDefault().Select(profile=>profile.Avatar), _lifetime.Token);
         IsVip = Client.Account.IsVip;
         var accountChanged=_queueAccount!=Client.Account.Id;
         if (accountChanged && Client.Account.Id > 0)
@@ -556,6 +572,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     {
         Tracks.ResetLoading(); Uploaders.ResetLoading();
         if (_view == "home") { await LoadHomeAsync(true); }
+        else if (_view == "notifications") await RefreshNotificationsAsync();
         else if (_view == "folder" && SelectedFolder is { } folder) await BrowseFolderAsync(folder);
         else if (_view == "search" && _query.Length > 0) await SearchCoreAsync(false);
         else if (_view is "history" or "playlist" or "cache") Navigate(_view);
@@ -612,8 +629,8 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
                     var preview = await Client.GetFolderPreviewAsync(folder, ct);
                     if (_disposed || version != _foldersVersion || ct.IsCancellationRequested) return;
                     var index = Folders.ToList().FindIndex(f => f.Id == folder.Id);
-                    if (index >= 0) Folders[index] = preview;
-                    if (SelectedFolder?.Id == folder.Id) { SelectedFolder = preview; }
+                    if (index >= 0) Folders[index].ApplyPreview(preview);
+                    if (SelectedFolder?.Id == folder.Id) SelectedFolder.ApplyPreview(preview);
                 }
                 finally { slots.Release(); }
             }

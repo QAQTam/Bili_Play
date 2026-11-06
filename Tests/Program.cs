@@ -934,6 +934,59 @@ tests.Add(("Temporary debug sessions delete only owned data and skip active or u
  finally {if(Directory.Exists(parent))Directory.Delete(parent,true);}
 }));
 
+tests.Add(("Notification feeds parse typed rows, stacked users, actual counts and cursor pagination without phantom messages", async () =>
+{
+ var likePages=0;var mentionPages=0;
+ using var client=new BilibiliClient(new Handler(request =>
+ {
+  Equal(HttpMethod.Get, request.Method);
+  var url=request.RequestUri!;var query=Text.ParseQuery(url.Query);
+  if(url.AbsolutePath.EndsWith("get_sessions"))
+  {
+   Equal("api.vc.bilibili.com",url.Host);
+   return Json("""{"code":0,"data":{"has_more":0,"session_list":[{"talker_id":7,"talker_info":{"name":"私信用户","pic_url":"https://i0.hdslb.com/dm.jpg"},"session_ts":1730000000000000,"last_msg":{"content":"{\"content\":\"你好\"}"}}]}}""");
+  }
+  if(url.AbsolutePath.EndsWith("/like"))
+  {
+   likePages++;
+   if(likePages==1) return Json("""{"code":0,"data":{"latest":{"items":[{"id":71,"counts":37,"like_time":1730000200,"users":[{"mid":8,"nickname":"甲","avatar":"https://i0.hdslb.com/a.jpg"},{"mid":9,"nickname":"乙","avatar":"https://i0.hdslb.com/b.jpg"}],"item":{"business":"评论","title":"被点赞的评论内容","image":"https://i0.hdslb.com/video.jpg","uri":"https://www.bilibili.com/video/BV1xx411c7mD"}}]},"total":{"cursor":{"id":71,"time":1730000200,"is_end":false},"items":[{"id":71,"counts":37,"like_time":1730000200,"users":[{"nickname":"甲","avatar":"https://i0.hdslb.com/a.jpg"}],"item":{"business":"评论","title":"被点赞的评论内容"}}]}}}""");
+   Equal("71",query["id"]);Equal("1730000200",query["like_time"]);True(!query.ContainsKey("pn"));
+   return Json("""{"code":0,"data":{"total":{"cursor":{"is_end":true},"items":[{"id":72,"counts":2,"like_time":1730000100,"users":[{"nickname":"丙","avatar":"https://i0.hdslb.com/c.jpg"}],"item":{"business":"视频","title":"视频标题","image":"https://i0.hdslb.com/video.jpg"}}]}}}""");
+  }
+  if(url.AbsolutePath.EndsWith("/at"))
+  {
+   mentionPages++;return Json("""{"code":0,"data":{"cursor":{"is_end":true},"items":[{"id":80,"at_time":1730000300,"user":{"nickname":"提及者","avatar":"https://i0.hdslb.com/at.jpg"},"item":{"business":"评论","source_content":"@我 的内容","title":"引用"}}]}}""");
+  }
+  if(url.AbsolutePath.EndsWith("/reply")) return Json("""{"code":0,"data":{"cursor":{"is_end":true},"items":[]}}""");
+  Equal("message.bilibili.com",url.Host);
+  return Json("""{"code":0,"data":{"system_notify_list":[{"id":90,"title":"系统公告","content":"<b>简短通知</b>","time_at":"2024-10-27 12:00:00"}]}}""");
+ }));
+ client.RestoreCachedAccount(new(123,"离线合成用户",""));
+ var items=await client.GetNotificationsAsync();Equal(2,likePages);Equal(1,mentionPages);Equal(5,items.Count);
+ var like=items.Single(item=>item.Id=="like:71");Equal(37,like.ActorCount);Equal(2,like.Avatars.Count);True(like.HasAvatarTwo);True(!like.HasTargetImage);Equal("评论",like.TargetKind);True(like.Summary.Contains("37 人赞了我的评论"));
+ Equal("https://i0.hdslb.com/video.jpg",items.Single(item=>item.Id=="like:72").TargetImage);
+ var dm=items.Single(item=>item.Category=="私信");Equal("你好",dm.Content);Equal("私信用户",dm.Title);True(dm.Timestamp>0);
+ True(items.All(item=>item.Category is "私信" or "回复与@" or "系统通知"));Equal(0,client.NotificationReadWarnings.Count);
+}));
+tests.Add(("Notification errors preserve other feeds and cancellation does not look like an empty inbox",async()=>
+{
+ using var client=new BilibiliClient(new Handler(request=>request.RequestUri!.AbsolutePath.EndsWith("/like")
+  ?Json("""{"code":-101,"message":"expired"}"""):Json("""{"code":0,"data":{"items":[],"session_list":[],"system_notify_list":[]}}""")));
+ client.RestoreCachedAccount(new(123,"合成用户",""));var items=await client.GetNotificationsAsync();Equal(0,items.Count);True(client.NotificationReadWarnings.Contains("点赞"));
+ using var cancel=new CancellationTokenSource();cancel.Cancel();await Throws<OperationCanceledException>(()=>client.GetNotificationsAsync(cancel.Token));
+}));
+Test("Folder previews update only changed cover properties without replacing the card",()=>
+{
+ var folder=new Folder(71,"收藏夹",3,true,true,Cover:"https://i0.hdslb.com/a.jpg");var changes=new List<string?>();folder.PropertyChanged+=(_,args)=>changes.Add(args.PropertyName);
+ var preview=folder with{Cover="https://i0.hdslb.com/b.jpg",CoverMiddle="https://i0.hdslb.com/c.jpg"};folder.ApplyPreview(preview);True(changes.Contains(nameof(Folder.FrontImage)));True(folder.FrontImage.Contains("b.jpg"));
+ changes.Clear();folder.ApplyPreview(preview);Equal(0,changes.Count);True(folder.Detail.Contains("私密"));
+});
+Test("Notification excerpts are bounded and thumbnail visibility uses explicit booleans",()=>
+{
+ var item=new AccountNotification("回复与@",new string('甲',300),new string('文',500),"",TargetText:new string('评',100));
+ True(item.Summary.Length<=121);True(item.Excerpt.Length<=161);True(item.TargetExcerpt.Length<=49);True(item.HasTarget);True(!item.HasTargetImage);True(!item.HasAvatarTwo);
+});
+
 var failures = 0;
 foreach(var test in tests)
 {

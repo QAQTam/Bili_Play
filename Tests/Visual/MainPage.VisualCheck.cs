@@ -34,6 +34,7 @@ public sealed partial class MainPage
             await VerifyStartupResponsivenessAsync();
             await VerifyDownloadLabelsAndAboutAsync(directory);
             await VerifyPageEntrancesAsync();
+            await VerifyBrowseAndNotificationsAsync(directory);
             await VerifyTrackActivationAsync();
             await VerifyStableQueueActivationAsync();
             await VerifyImmediateSelectionAsync();
@@ -229,6 +230,7 @@ public sealed partial class MainPage
             Check(cached.All(t => File.Exists(t.LocalFile) == !confirm && File.Exists(Path.ChangeExtension(t.LocalFile,".subtitles.json")) == !confirm), "删除确认或取消没有正确保留／删除音频和字幕");
         }
         Check(!SelectAllCachedButton.IsEnabled && !ViewModel.CanSelectCachedTracks,"空下载列表仍可全选");
+        Check(!CacheSelectButton.IsEnabled&&CacheSelectButton.Opacity<.5,"空下载列表的选择按钮未禁用变灰");
         Check(ViewModel.Tracks.Count == 0 && !ViewModel.IsCacheSelectionMode, "批量删除后界面未刷新");
         ViewModel.Notify("通知方向验证",NoticeLevel.Info); await Task.Delay(100);
         var notice = ViewModel.Notifications.Last(); Check(_noticeBorders.ContainsKey(notice), "通知没有原生显示");
