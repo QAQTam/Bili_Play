@@ -154,6 +154,25 @@ tests.Add(("Hi-Res selection requires VIP and keeps AAC fallback", async () =>
  Equal("Hi-Res 无损", lossless.Quality); Equal("/lossless.m4s",lossless.Url.AbsolutePath);
  Equal("/a.m4s", lossless.Fallback!.Url.AbsolutePath);
 }));
+Test("Music cover stays with its card instead of avatars, badges or lazy placeholders", () =>
+{
+ var html = """
+ <div class="feed-card"><a href="https://www.bilibili.com/video/BV1xx411c7mD"></a>
+ <img src="//i0.hdslb.com/bfs/face/avatar.jpg">
+ <picture class="v-img bili-video-card__cover"><img src="//i0.hdslb.com/bfs/archive/first.jpg@480w.webp"></picture>
+ <div class="bili-video-card__title" title="First"></div></div>
+ <div class="feed-card"><a href="https://www.bilibili.com/video/BV2xx411c7mD"></a>
+ <img src="//i0.hdslb.com/decoration.jpg">
+ <picture class="bili-video-card__cover"><img data-src='//i0.hdslb.com/bfs/archive/second.jpg' src="data:image/png;base64,placeholder"></picture>
+ <div class="bili-video-card__title" title="Second"></div></div>
+ <div class="feed-card"><a href="https://www.bilibili.com/video/BV3xx411c7mD"></a>
+ <img src="//i0.hdslb.com/avatar.jpg"><picture class="bili-video-card__cover"><img src="data:image/png;base64,placeholder"></picture>
+ <div class="bili-video-card__title" title="Missing cover"></div></div>
+ """;
+ var tracks = MusicPage.Parse(html); Equal(2,tracks.Count);
+ Equal("First",tracks[0].Title); Equal("https://i0.hdslb.com/bfs/archive/first.jpg",tracks[0].Cover);
+ Equal("Second",tracks[1].Title); Equal("https://i0.hdslb.com/bfs/archive/second.jpg",tracks[1].Cover);
+});
 Test("Music page reads rendered channel cards without executing scripts or banners", () =>
 {
  var html = """
@@ -410,6 +429,20 @@ tests.Add(("Blocked metadata falls back to embedded video page and preserves par
  await client.GetAccountAsync(); var video = await client.GetVideoAsync("BV1xx411c7mD");
  Equal(2,video.Parts.Count); Equal(11L,video.Parts[1].Cid); Equal(2,video.Parts[1].PartCount);
  Equal(55L,video.CollectionId); Equal(2,video.Collection!.Count); Equal(42L,video.Collection[1].UploaderId);
+}));
+tests.Add(("Collection episodes never inherit another video's artwork", async () =>
+{
+ using var client = new BilibiliClient(new Handler(request => request.RequestUri!.AbsolutePath.EndsWith("/nav") ? Json(account) : Json("""
+ {"code":0,"data":{"aid":1,"bvid":"BV1xx411c7mD","title":"Root","pic":"https://i0.hdslb.com/root.jpg","owner":{"mid":42,"name":"UP"},"pages":[{"cid":10,"page":1,"duration":20}],"ugc_season":{"sections":[{"episodes":[
+ {"aid":1,"bvid":"BV1xx411c7mD","title":"Root episode","arc":{}},
+ {"aid":2,"bvid":"BV2xx411c7mD","title":"Own cover","arc":{"pic":"https://i0.hdslb.com/second.jpg"}},
+ {"aid":3,"bvid":"BV3xx411c7mD","title":"Missing cover","arc":{}}
+ ]}]}}}
+ """)));
+ await client.GetAccountAsync(); var video = await client.GetVideoAsync("BV1xx411c7mD");
+ Equal("https://i0.hdslb.com/root.jpg",video.Collection![0].Cover);
+ Equal("https://i0.hdslb.com/second.jpg",video.Collection[1].Cover);
+ Equal("",video.Collection[2].Cover);
 }));
 tests.Add(("Blocked audio falls back to page DASH and still validates CDN hosts", async () =>
 {

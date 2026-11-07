@@ -222,7 +222,7 @@ public sealed partial class BilibiliClient : IDisposable
         {
             var arc = x.O("arc"); var page = x.O("page");
             return new Track(x.N("aid"), x.S("bvid", arc.S("bvid")), Text.Clean(x.S("title", arc.S("title"))),
-                arc.O("author").S("name", track.Uploader), ImageUrl(arc.S("pic", data.S("pic"))), arc.N("duration"),
+                arc.O("author").S("name", track.Uploader), ImageUrl(arc.S("pic", x.S("cover", x.S("bvid") == track.Bvid ? track.Cover : ""))), arc.N("duration"),
                 x.N("cid") > 0 ? x.N("cid") : page.N("cid"), UploaderId: arc.O("author").N("mid") > 0 ? arc.O("author").N("mid") : track.UploaderId);
         }).Where(t => !string.IsNullOrEmpty(t.Bvid)).DistinctBy(t => t.Bvid).ToArray();
         var category = (int)data.N("tid_v2");

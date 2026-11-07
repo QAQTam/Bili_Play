@@ -13,21 +13,35 @@ public sealed class CenteredCover : Grid
     public static readonly DependencyProperty SourceProperty = DependencyProperty.Register(nameof(Source), typeof(ImageSource), typeof(CenteredCover),
         new PropertyMetadata(null, (sender, args) => ((CenteredCover)sender).SetImage((ImageSource?)args.NewValue)));
     public ImageSource? Source { get => (ImageSource?)GetValue(SourceProperty); set => SetValue(SourceProperty, value); }
-    public CenteredCover() { Background = _brush; CornerRadius = new CornerRadius(8); IsHitTestVisible = false; }
+    public CenteredCover()
+    {
+        Background = _brush; CornerRadius = new CornerRadius(8); IsHitTestVisible = false;
+        Loaded += (_, _) => SetImage(Source);
+        Unloaded += (_, _) => { DetachPending(); _brush.ImageSource = null; };
+    }
     private void SetImage(ImageSource? source)
     {
         DetachPending();
-        if (source is not BitmapImage bitmap || bitmap.PixelWidth > 0 || _brush.ImageSource is null)
-        { _brush.ImageSource = source; return; }
-        // Keep the existing cover until its replacement is decoded. Rebinding a
-        // folder preview must not show an empty ImageBrush between network frames.
-        _pending = bitmap;
-        bitmap.ImageOpened += ReplacementOpened;
-        bitmap.ImageFailed += ReplacementFailed;
+        // A recycled cell or newly selected track must never display the previous
+        // item's artwork while its own image is loading, or after a load failure.
+        _brush.ImageSource = null;
+        if (source is BitmapImage bitmap && bitmap.PixelWidth == 0)
+        {
+            _pending = bitmap;
+            bitmap.ImageOpened += ReplacementOpened;
+            bitmap.ImageFailed += ReplacementFailed;
+        }
+        // URI images decode on demand through the live brush. Waiting for
+        // ImageOpened before attaching the source prevents that decode entirely.
+        _brush.ImageSource = source;
     }
     private void ReplacementOpened(object sender, RoutedEventArgs args)
-    { if (_pending is { } ready) { DetachPending(); _brush.ImageSource = ready; } }
-    private void ReplacementFailed(object sender, ExceptionRoutedEventArgs args) => DetachPending();
+    {
+        if (ReferenceEquals(sender, _pending) && ReferenceEquals(Source, _pending))
+            DetachPending();
+    }
+    private void ReplacementFailed(object sender, ExceptionRoutedEventArgs args)
+    { if (ReferenceEquals(sender, _pending)) { DetachPending(); _brush.ImageSource = null; } }
     private void DetachPending()
     {
         if (_pending is null) return;

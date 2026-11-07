@@ -28,6 +28,7 @@ public sealed partial class MainPage
             ViewModel.CloseToTray = false;
             await VerifyLoginLayoutAsync(directory);
             await VerifyDebugModeAsync(directory);
+            await VerifyArtworkReplacementAsync(directory);
             await ((MainWindow)App.Window).VerifyWindowPlacementAsync();
             ViewModel.Client.RestoreCachedAccount(new(123, "离线布局验证", ""));
             ViewModel.IsLoggedIn = true;

@@ -17,7 +17,7 @@ public static class MusicPage
         {
             var bvid = Match(card, @"bilibili\.com/video/(BV[0-9A-Za-z]{10})").Groups[1].Value;
             var title = WebUtility.HtmlDecode(Match(card, "class=\"bili-video-card__title\"[^>]*title=\"([^\"]*)\"").Groups[1].Value);
-            var cover = WebUtility.HtmlDecode(Match(card, "<img[^>]*src=\"([^\"]+)\"").Groups[1].Value).Split('@')[0];
+            var cover = ReadCover(card, bvid);
             var author = Match(card, "<a(?=[^>]*class=\"[^\"]*bili-video-card__author)(?=[^>]*href=\"(?:https:)?//space.bilibili.com/(\\d+)[^\"]*\")[^>]*>(.*?)</a>");
             var name = Text.Clean(Match(author.Groups[2].Value, "<span[^>]*title=\"([^\"]*)\"").Groups[1].Value);
             if (string.IsNullOrWhiteSpace(name)) name = Text.Clean(author.Groups[2].Value);
@@ -33,5 +33,57 @@ public static class MusicPage
             tracks.Add(new(0, bvid, title, name, cover, Text.ParseDuration(time), UploaderId: owner));
         }
         return tracks.DistinctBy(t => t.Bvid).ToArray();
+    }
+
+    private static IEnumerable<Match> Matches(string text, string pattern) => Regex.Matches(text, pattern,
+        RegexOptions.Singleline | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)).Cast<Match>();
+
+    private static string Attribute(string tag, string name) => WebUtility.HtmlDecode(
+        Match(tag, @"\s" + name + @"\s*=\s*([""'])(.*?)\1").Groups[2].Value);
+
+    private static string ReadCover(string card, string bvid)
+    {
+        // Prefer the semantic cover container and the selected video's own link.
+        // The first image in a card can be an avatar, badge or preview decoration.
+        var pictures = Matches(card, @"<picture\b[^>]*>.*?</picture>")
+            .Where(picture => Attribute(Match(picture.Value, @"^<picture\b[^>]*>").Value, "class")
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("bili-video-card__cover")).ToArray();
+        foreach (var picture in pictures)
+            if (ImageIn(picture.Value) is { Length: > 0 } cover) return cover;
+        if (pictures.Length > 0) return "";
+
+        var coverImages = Matches(card, @"<img\b[^>]*>").Where(image =>
+            Attribute(image.Value, "class").Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("bili-video-card__cover")).ToArray();
+        foreach (var image in coverImages)
+            if (ImageIn(image.Value) is { Length: > 0 } cover) return cover;
+        if (coverImages.Length > 0) return "";
+
+        foreach (var link in Matches(card, @"<a\b[^>]*>.*?</a>"))
+        {
+            var href = Attribute(Match(link.Value, @"^<a\b[^>]*>").Value, "href");
+            if (href.StartsWith("//")) href = "https:" + href;
+            if (Text.ParseVideoInput(href)?.Bvid == bvid && ImageIn(link.Value) is { Length: > 0 } cover) return cover;
+        }
+
+        // Older cards have a bare image. Accept only an unambiguous candidate,
+        // excluding known avatar/badge paths rather than guessing another image.
+        var candidates = Matches(card, @"<img\b[^>]*>").Select(image => ImageIn(image.Value))
+            .Where(image => image.Length > 0 && !image.Contains("/bfs/face/", StringComparison.OrdinalIgnoreCase)
+                && !image.Contains("/bfs/garb/", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.Ordinal).Take(2).ToArray();
+        return candidates.Length == 1 ? candidates[0] : "";
+    }
+
+    private static string ImageIn(string markup)
+    {
+        foreach (var image in Matches(markup, @"<img\b[^>]*>"))
+        foreach (var name in new[] { "data-src", "src" })
+        {
+            var value = Attribute(image.Value, name).Split('@')[0];
+            if (value.StartsWith("//")) value = "https:" + value;
+            if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) value = "https://" + value[7..];
+            if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && Text.IsMediaHost(uri)) return value;
+        }
+        return "";
     }
 }
