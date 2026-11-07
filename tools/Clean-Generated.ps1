@@ -36,7 +36,9 @@ foreach ($relative in $relativePaths) {
     foreach ($item in $items | Where-Object { -not $_.PSIsContainer }) { $files++; $bytes += $item.Length }
 }
 if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) {
-    foreach ($package in @(Get-AppxPackage -Name BiliPlay.Desktop -ErrorAction Stop)) {
+    [xml]$manifest = Get-Content -LiteralPath (Join-Path $taskRoot 'Package.appxmanifest') -Raw
+    $packageNames = @('BiliPlay.Desktop', [string]$manifest.Package.Identity.Name) | Select-Object -Unique
+    foreach ($package in @($packageNames | ForEach-Object { Get-AppxPackage -Name $_ -ErrorAction Stop })) {
         foreach ($target in $targets) {
             if ($package.InstallLocation -eq $target -or
                 $package.InstallLocation.StartsWith($target + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or

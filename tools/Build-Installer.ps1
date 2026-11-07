@@ -5,18 +5,19 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 [xml]$sourceManifest = Get-Content -LiteralPath (Join-Path $root 'Package.appxmanifest') -Raw
 $version = ([Version]$sourceManifest.Package.Identity.Version).ToString(3)
 $publisher = [string]$sourceManifest.Package.Identity.Publisher
+& (Join-Path $PSScriptRoot 'Test-StoreIdentity.ps1') -Manifest $sourceManifest
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path ([Environment]::GetFolderPath('Desktop')) ('Bili_Play_' + $version) }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 if ($output -eq $root -or $output.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw '安装包输出必须在工作区之外。' }
-$deliveryNames = @(('BiliPlay_' + $version + '_x64.msix'), 'BiliPlay.cer', '安装说明.txt', 'LICENSE.txt', '用户协议.txt')
+$deliveryNames = @(('BiliPlay_' + $version + '_x64.msix'), 'BiliPlay.cer', 'LICENSE.txt', '用户协议.txt', '一键安装.cmd')
 if (Test-Path -LiteralPath $output) {
-    $unexpected = @(Get-ChildItem -LiteralPath $output -Force | Where-Object { $_.PSIsContainer -or $_.Name -notin $deliveryNames })
+    $unexpected = @(Get-ChildItem -LiteralPath $output -Force | Where-Object { $_.PSIsContainer -or $_.Name -notin @($deliveryNames + '安装说明.txt') })
     if ($unexpected.Count) { throw '交付目录包含其他文件，请使用空目录；不会自动删除其中的文件。' }
 }
 # Shared-runtime and self-contained builds have different PRI inputs. Never reuse their intermediate XAML/PRI cache.
 & (Join-Path $PSScriptRoot 'Clean-Generated.ps1') -IncludePublishOutput
 $stage = Join-Path $root 'artifacts/installer'
-$signing = [IO.Path]::GetFullPath((Join-Path ([Environment]::GetFolderPath('UserProfile')) '.biliplay/signing'))
+$signing = [IO.Path]::GetFullPath((Join-Path ([Environment]::GetFolderPath('UserProfile')) ('.biliplay/signing/' + $sourceManifest.Package.Identity.Name)))
 if ($signing.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw '签名私钥不能保存在工作区。' }
 foreach ($directory in @($output, $signing, $stage)) {
     $ancestor = $directory
@@ -73,7 +74,9 @@ try {
 
         if (@($names | Where-Object { $_ -match '(?i)(\.(pfx|p12|pem|key|p8|dpapi)$|\.pdb$|\.log$|\.db($|-)|\.sqlite[0-9]?($|-)|cookies?\.(json|txt)$|session\.(json|txt)$|(^|/)(Tests|TestAssets|\.winapp)/)' }).Count) { throw '安装包包含本地数据、私钥或测试文件。' }
         [xml]$manifest = [Text.Encoding]::UTF8.GetString((Read-Entry 'AppxManifest.xml')).TrimStart([char]0xfeff)
+        & (Join-Path $PSScriptRoot 'Test-StoreIdentity.ps1') -Manifest $manifest
         if ($manifest.Package.Identity.Name -ne $sourceManifest.Package.Identity.Name -or $manifest.Package.Identity.Version -ne $sourceManifest.Package.Identity.Version -or $manifest.Package.Identity.Publisher -ne $publisher -or $manifest.Package.Identity.ProcessorArchitecture -ne 'x64') { throw '安装包身份与正式日用版不一致。' }
+        if ([string]$manifest.Package.Properties.PublisherDisplayName -cne [string]$sourceManifest.Package.Properties.PublisherDisplayName) { throw '安装包的发布者显示名称与源清单不一致。' }
         if (@($manifest.Package.Dependencies.PackageDependency).Where({ $_ }).Count) { throw '自包含安装包仍声明了额外框架依赖。' }
         $assembly = Read-Entry 'Bili_Play.dll'
         $hex = [Convert]::ToHexString($assembly)
@@ -117,19 +120,7 @@ try {
     Copy-Item -LiteralPath $publicCert -Destination (Join-Path $output 'BiliPlay.cer') -Force
     Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $output 'LICENSE.txt') -Force
     Copy-Item -LiteralPath (Join-Path $root '用户协议.txt') -Destination (Join-Path $output '用户协议.txt') -Force
-    $instructions = @'
-首次安装说明：
-
-1. 安装时：双击 BiliPlay.cer（证书图表的文件），选择“安装证书”→“本地计算机”→“将所有证书放入下列存储”→“浏览”→“受信任的根证书颁发机构”，后续一律下一步即可。此操作需要管理员权限。
-2. 双击 BiliPlay_XXX.msix （一个包图标的文件）以继续安装。
-3. 打开开始菜单中的 Bili Play 并使用自己的哔哩哔哩账号扫码登录。
-
-
-后续升级：
-
-直接打开 BiliPlay_XXX.msix 即可。
-'@
-    [IO.File]::WriteAllText((Join-Path $output '安装说明.txt'), $instructions, [Text.UTF8Encoding]::new($true))
+    & (Join-Path $PSScriptRoot 'Write-InstallLauncher.ps1') -OutputDirectory $output
     Write-Output ('PASS production profile, self-contained runtimes, file hashes, signature and privacy: ' + $finalPackage)
 } finally {
     $password = $null
