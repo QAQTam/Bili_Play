@@ -5,11 +5,15 @@
 
 # Bili Play
 
-**把 B 站变成你的听歌软件。**
+把 B 站变成你的听歌软件。
 
 一款使用 WinUI 3 构建的 Windows 音乐播放器。  
 将哔哩哔哩的视频变成歌曲，听全网资源。
 
+
+<a href="https://apps.microsoft.com/detail/9n8r53czxd4p?referrer=appbadge&mode=full" target="_blank"  rel="noopener noreferrer">
+	<img src="https://get.microsoft.com/images/zh-cn%20light.svg" width="200"/>
+</a>
 
 </div>
 
