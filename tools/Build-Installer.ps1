@@ -9,10 +9,13 @@ $publisher = [string]$sourceManifest.Package.Identity.Publisher
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path ([Environment]::GetFolderPath('Desktop')) ('Bili_Play_' + $version) }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 if ($output -eq $root -or $output.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw '安装包输出必须在工作区之外。' }
-$deliveryNames = @(('BiliPlay_' + $version + '_x64.msix'))
 if (Test-Path -LiteralPath $output) {
-    $unexpected = @(Get-ChildItem -LiteralPath $output -Force | Where-Object { $_.PSIsContainer -or $_.Name -notin $deliveryNames })
-    if ($unexpected.Count) { throw '交付目录包含其他文件，请使用空目录；不会自动删除其中的文件。' }
+    $allowed = @(('BiliPlay_' + $version + '_x64.msix'), 'BiliPlay.cer')
+    if (@(Get-ChildItem -LiteralPath $output -Force | Where-Object { $_.PSIsContainer -or $_.Name -notin $allowed -or ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) }).Count) { throw '交付目录包含其他文件或链接，请选择空目录。' }
+}
+if (Test-Path -LiteralPath (Join-Path $output ('BiliPlay_' + $version + '_x64.msix'))) {
+    $existing = Get-Item -LiteralPath (Join-Path $output ('BiliPlay_' + $version + '_x64.msix')) -Force
+    if ($existing.PSIsContainer -or ($existing.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw '安装包目标位置是目录或链接。' }
 }
 # Shared-runtime and self-contained builds have different PRI inputs. Never reuse their intermediate XAML/PRI cache.
 & (Join-Path $PSScriptRoot 'Clean-Generated.ps1') -IncludePublishOutput
@@ -117,6 +120,7 @@ try {
     } finally { if ($sha) { $sha.Dispose() }; $zip.Dispose() }
     $finalPackage = Join-Path $output ([IO.Path]::GetFileName($package))
     Copy-Item -LiteralPath $package -Destination $finalPackage -Force
+    Copy-Item -LiteralPath $publicCert -Destination (Join-Path $output 'BiliPlay.cer') -Force
     Write-Output ('PASS production profile, self-contained runtimes, file hashes, signature and privacy: ' + $finalPackage)
 } finally {
     $password = $null

@@ -114,7 +114,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     private string _query = "";
     private string _view = "home";
     private sealed record BrowseState(string View, string Title, Folder? Folder, Track[] Tracks, Uploader[] Uploaders,
-        string Query, int Page, bool More, int Category, string EmptyText);
+        string Query, int Page, bool More, int Category, string EmptyText, UserSpace? Space = null, long SpaceUser = 0);
     private readonly Stack<BrowseState> _backStack = new();
     private bool _restoringNavigation;
     private int _favoriteVersion;
@@ -250,7 +250,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     public bool HasTrackContent => (IsHomeView || IsTracksView) && !IsDownloadingView;
     public string RefreshLabel => IsHomeView ? "换一批" : "刷新";
     public CommandBarOverflowButtonVisibility ToolbarOverflowVisibility => CommandBarOverflowButtonVisibility.Collapsed;
-    public bool CanChooseView => IsHomeView || IsLibraryView || IsFolderView || IsSearchView;
+    public bool CanChooseView => IsHomeView || IsLibraryView || IsFolderView || IsSearchView || IsSpaceView;
     public bool CanSelectCachedTracks => IsCachedView && !IsEmpty && Tracks.Count > 0;
     public double CacheSelectionOpacity => CanSelectCachedTracks ? 1 : .35;
     [ObservableProperty] public partial bool IsFolderView { get; set; }
@@ -302,10 +302,10 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         _restoringNavigation = true;
         try
         {
-            Navigate(state.View); SelectedFolder = state.Folder; PageTitle = state.Title;
+            Navigate(state.View); SelectedFolder = state.Folder; PageTitle = state.Title; SpaceProfile = state.Space; _spaceUserId = state.SpaceUser;
             _query = state.Query; SearchText = state.Query; _page = state.Page; HasMore = state.View == "home" ? _homeMore : state.More;
             SearchCategoryIndex = state.Category; EmptyText = state.EmptyText;
-            if (state.View is "folder" or "search") Replace(Tracks, state.Tracks);
+            if (state.View is "folder" or "search" or "space") Replace(Tracks, state.Tracks);
             Replace(Uploaders, state.Uploaders);
             IsEmpty = state.View == "library" ? Folders.Count == 0 : state.View == "settings" ? false
                 : IsPlaylistView ? Queue.Count == 0 : IsSearchUploaders ? Uploaders.Count == 0 : Tracks.Count == 0;
@@ -331,11 +331,11 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsHomeGridView), nameof(IsTrackListVisible), nameof(BrowseGridMode), nameof(BrowseListMode), nameof(IsUploaderGridView), nameof(IsUploaderListView))]
     public partial bool SearchGridMode { get; set; }
     partial void OnSearchGridModeChanged(bool value) => Store.SetSetting("searchGrid", value ? "true" : "false");
-    public bool IsHomeGridView => IsHomeView && HomeGridMode || IsFolderView && FolderTracksGridMode || IsSearchView && !IsSearchUploaders && SearchGridMode;
+    public bool IsHomeGridView => IsHomeView && HomeGridMode || IsFolderView && FolderTracksGridMode || IsSearchView && !IsSearchUploaders && SearchGridMode || IsSpaceView && SpaceGridMode;
     public bool IsFolderGridView => IsLibraryView && FolderGridMode;
     public bool IsFolderListView => IsLibraryView && !FolderGridMode;
-    public bool IsTrackListVisible => !IsPlaylistView && !IsDownloadingView && !IsSearchUploaders && (IsTracksView && (!IsFolderView || !FolderTracksGridMode) && (!IsSearchView || !SearchGridMode) || IsHomeView && !HomeGridMode);
-    public bool BrowseGridMode => IsLibraryView ? FolderGridMode : IsFolderView ? FolderTracksGridMode : IsSearchView ? SearchGridMode : HomeGridMode;
+    public bool IsTrackListVisible => !IsPlaylistView && !IsDownloadingView && !IsSearchUploaders && (IsTracksView && (!IsFolderView || !FolderTracksGridMode) && (!IsSearchView || !SearchGridMode) && (!IsSpaceView || !SpaceGridMode) || IsHomeView && !HomeGridMode);
+    public bool BrowseGridMode => IsLibraryView ? FolderGridMode : IsFolderView ? FolderTracksGridMode : IsSearchView ? SearchGridMode : IsSpaceView ? SpaceGridMode : HomeGridMode;
     public bool BrowseListMode => !BrowseGridMode;
     partial void OnHomeGridModeChanged(bool value) { Store.SetSetting("homeGrid", value ? "true" : "false"); NotifyBrowseMode(); }
     partial void OnFolderGridModeChanged(bool value) { Store.SetSetting("folderGrid", value ? "true" : "false"); NotifyBrowseMode(); }
@@ -363,7 +363,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     {
         Client = client;
         PropertyChanged += (_, args) => { if (args.PropertyName is nameof(IsHistoryView) or nameof(IsPlaylistView) or nameof(IsEmpty)) UpdateClearAvailability(); };
-        Tracks.CanLoadMore = () => IsLoggedIn && HasMore && (_view is "home" or "folder" || _view == "search" && !IsSearchUploaders);
+        Tracks.CanLoadMore = () => IsLoggedIn && HasMore && (_view is "home" or "folder" or "space" || _view == "search" && !IsSearchUploaders);
         Uploaders.CanLoadMore = () => IsLoggedIn && HasMore && IsSearchUploaders;
         Tracks.FetchPage = Uploaders.FetchPage = FetchIncrementalPageAsync;
         Player = new(Client, App.DispatcherQueue);
@@ -392,6 +392,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         SearchGridMode = Store.GetSetting("searchGrid", "false") == "true";
         FolderGridMode = Store.GetSetting("folderGrid", "true") != "false";
         FolderTracksGridMode = Store.GetSetting("folderTracksGrid", "true") != "false";
+        SpaceGridMode = Store.GetSetting("spaceGrid", "false") == "true";
         Queue.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(HasQueue)); OnPropertyChanged(nameof(HasTracks)); OnPropertyChanged(nameof(CanSelectCachedTracks)); UpdateClearAvailability();
@@ -504,6 +505,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         var accountChanged=_queueAccount!=Client.Account.Id;
         if (accountChanged && Client.Account.Id > 0)
         {
+            ClearAccountPages();
             _homeCache.Clear(); _homeCache.AddRange(Store.MusicCache(Client.Account.Id));
             _regionPage=0;_hasLoadedHome=false;_homeMore=true;
             _backStack.Clear();
@@ -526,12 +528,14 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     {
         if (_view == "notifications" && view != "notifications") DisposeNotifications();
         if (!_restoringNavigation && IsLoggedIn && (view != _view || view == "search" && (Tracks.Count > 0 || Uploaders.Count > 0)))
-            _backStack.Push(new(_view, PageTitle, SelectedFolder, Tracks.ToArray(), Uploaders.ToArray(), _query, _page, HasMore, SearchCategoryIndex, EmptyText));
+            _backStack.Push(new(_view, PageTitle, SelectedFolder, Tracks.ToArray(), Uploaders.ToArray(), _query, _page, HasMore, SearchCategoryIndex, EmptyText, SpaceProfile, _spaceUserId));
         if (view != "cache") { IsCacheSelectionMode = false; SelectedCacheCount = 0; }
         if(view!="library") StopFolderPreviews();
         IsSearchView = view == "search";
         _view = view; _browse?.Cancel(); _browse?.Dispose(); _browse = null; _browseVersion++;
-        IsLibraryView = view == "library"; IsTracksView = view is "history" or "search" or "folder" or "playlist" or "cache";
+        IsLibraryView = view == "library"; IsTracksView = view is "history" or "search" or "folder" or "playlist" or "cache" or "space";
+        IsSpaceView = view == "space"; IsSpaceLoading = false;
+        if (!IsSpaceView) SpaceProfile = null;
         IsFolderView = view == "folder"; IsPlaylistView = view == "playlist"; IsCacheView = view == "cache";
         IsSettingsView = view == "settings"; IsNotificationsView = view == "notifications"; IsHomeView = view == "home";
         IsHistoryView = view == "history";
@@ -562,6 +566,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
                 PageTitle = "通知中心"; IsEmpty = false; NotificationsStatus = "正在读取通知…";
                 _ = RefreshNotificationsAsync(); break;
             case "settings": PageTitle = "设置"; break;
+            case "space": PageTitle = "个人空间"; break;
         }
         Tracks.ResetLoading(); Uploaders.ResetLoading();
         OnPropertyChanged(nameof(ShowPageProgress));
@@ -572,6 +577,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     {
         Tracks.ResetLoading(); Uploaders.ResetLoading();
         if (_view == "home") { await LoadHomeAsync(true); }
+        else if (_view == "space" && _spaceUserId > 0) await OpenSpaceAsync(_spaceUserId);
         else if (_view == "notifications") await RefreshNotificationsAsync();
         else if (_view == "folder" && SelectedFolder is { } folder) await BrowseFolderAsync(folder);
         else if (_view == "search" && _query.Length > 0) await SearchCoreAsync(false);
@@ -708,6 +714,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         }
         var result = _view == "folder" && SelectedFolder is { } folder
             ? await Client.GetFolderTracksAsync(folder.Id, next, _browse?.Token ?? default)
+            : _view == "space" && SpaceProfile is { } profile ? await Client.GetUserWorksAsync(profile.Id, next, _browse?.Token ?? default)
             : await Client.SearchAsync(_query, next, _browse?.Token ?? default);
         if (version != _browseVersion) return;
         _page = next; Append(Tracks, result.Items); HasMore = result.HasMore;
@@ -1339,6 +1346,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         SaveProgress(); _playVersion++; _browseVersion++;
         _browse?.Cancel(); _subtitleDiscovery?.Cancel(); _subtitles?.Cancel(); _folderPreviews?.Cancel(); _foldersVersion++;
         Player.Stop(); SessionVault.Clear(); Client.ClearSession();
+        ClearAccountPages();
         IsLoggedIn = false; AccountName = "尚未登录"; AccountAvatar = null; AccountLargeAvatar = null; IsVip = false; IsLyricsOpen = false;
         _homeCache.Clear(); _regionPage = 0; _hasLoadedHome = false; _homeMore = true;
         _view = "home"; _backStack.Clear();

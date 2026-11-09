@@ -8,6 +8,11 @@ namespace BiliPlay;
 
 public sealed partial class MainWindow
 {
+    private async void OwnSpaceClick(object sender, RoutedEventArgs args)
+    {
+        AccountFlyout.Hide(); CloseSearchHistory();
+        if (ViewModel.Client.Account is { } account) await ViewModel.OpenSpaceAsync(account.Id);
+    }
     private CancellationTokenSource? _socialCountsLoad;
     private void AccountFlyoutClosed(object sender, object args) => _socialCountsLoad?.Cancel();
     private async void AccountFlyoutOpening(object sender, object args) => await RefreshSocialCountsAsync();
@@ -134,7 +139,7 @@ public sealed partial class MainWindow
             page = 1; more = true; unfollowed.Clear(); users.Clear(); users.ResetLoading(); await users.LoadPageAsync(lifetime.Token);
         };
         list.ItemClick += async (_, args) =>
-        { if (args.ClickedItem is SocialUser user) await ViewModel.RunAsync(async () => { await Launcher.LaunchUriAsync(new Uri(user.Url)); }); };
+        { if (args.ClickedItem is SocialUser user) { dialog.Hide(); await ViewModel.OpenSpaceAsync(user.Id); } };
         try
         {
             var shown = dialog.ShowAsync();

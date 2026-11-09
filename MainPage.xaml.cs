@@ -145,7 +145,7 @@ public sealed partial class MainPage : Page
     private async void CommentAuthorClick(object sender, RoutedEventArgs args)
     {
         if (sender is FrameworkElement { Tag: long id } && id > 0)
-            await ViewModel.RunAsync(async () => { await Windows.System.Launcher.LaunchUriAsync(new Uri($"https://space.bilibili.com/{id}")); });
+            await ViewModel.OpenSpaceAsync(id);
     }
     private void PlaybackRateOpening(object sender, object args)
     {
@@ -230,7 +230,7 @@ public sealed partial class MainPage : Page
                 { TrackList.SelectedItems.Clear(); ViewModel.SelectedCacheCount = 0; }
             });
         if (e.PropertyName is nameof(ViewModel.HomeGridMode) or nameof(ViewModel.FolderGridMode)
-            or nameof(ViewModel.SearchGridMode) or nameof(ViewModel.FolderTracksGridMode) or nameof(ViewModel.SearchCategoryIndex) or nameof(ViewModel.CacheTabIndex) or nameof(ViewModel.IsNotificationsView)) QueueBrowseEntrance();
+            or nameof(ViewModel.SearchGridMode) or nameof(ViewModel.SpaceGridMode) or nameof(ViewModel.FolderTracksGridMode) or nameof(ViewModel.SearchCategoryIndex) or nameof(ViewModel.CacheTabIndex) or nameof(ViewModel.IsNotificationsView)) QueueBrowseEntrance();
         if (e.PropertyName == nameof(ViewModel.VisibleNotifications) && ViewModel.IsNotificationsView) QueueBrowseEntrance();
         if (e.PropertyName == nameof(ViewModel.ActiveSubtitleIndex)) StyleVisibleLyrics(false);
         if (e.PropertyName == nameof(ViewModel.FollowSubtitleIndex)) FocusLyric();
@@ -333,10 +333,10 @@ public sealed partial class MainPage : Page
     {
         var user = track.UploaderId;
         if (user <= 0) user = (await ViewModel.Client.GetVideoAsync(track.Bvid, track.Aid)).Track.UploaderId;
-        if (user > 0) await Launcher.LaunchUriAsync(new Uri($"https://space.bilibili.com/{user}"));
+        if (user > 0) await ViewModel.OpenSpaceAsync(user);
     });
     private async void UploaderClicked(object sender, ItemClickEventArgs e)
-    { if (e.ClickedItem is Uploader user) await Launcher.LaunchUriAsync(new(user.Url)); }
+    { if (e.ClickedItem is Uploader user) await ViewModel.OpenSpaceAsync(user.Id); }
     private void QualityMenuOpening(object sender, object e)
     {
         if (sender is not Flyout flyout) return;
@@ -466,7 +466,7 @@ public sealed partial class MainPage : Page
     private void GridViewClick(object sender, RoutedEventArgs e) => SetBrowseMode(true);
     private void ListViewClick(object sender, RoutedEventArgs e) => SetBrowseMode(false);
     private void SetBrowseMode(bool grid)
-    { if (ViewModel.IsLibraryView) ViewModel.FolderGridMode = grid; else if (ViewModel.IsFolderView) ViewModel.FolderTracksGridMode = grid; else if (ViewModel.IsSearchView) ViewModel.SearchGridMode = grid; else ViewModel.HomeGridMode = grid; }
+    { if (ViewModel.IsLibraryView) ViewModel.FolderGridMode = grid; else if (ViewModel.IsFolderView) ViewModel.FolderTracksGridMode = grid; else if (ViewModel.IsSearchView) ViewModel.SearchGridMode = grid; else if (ViewModel.IsSpaceView) ViewModel.SpaceGridMode = grid; else ViewModel.HomeGridMode = grid; }
     private void DismissNoticeClick(object sender, RoutedEventArgs e)
     { if (sender is FrameworkElement { Tag: ToastNotice item }) ViewModel.DismissNotice(item); }
     private void TrackRightTapped(object sender, RightTappedRoutedEventArgs e)

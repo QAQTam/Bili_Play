@@ -1020,6 +1020,48 @@ Test("Notification excerpts are bounded and thumbnail visibility uses explicit b
  True(item.Summary.Length<=121);True(item.Excerpt.Length<=161);True(item.TargetExcerpt.Length<=49);True(item.HasTarget);True(!item.HasTargetImage);True(!item.HasAvatarTwo);
 });
 
+tests.Add(("Personal spaces validate identity, VIP level and paginate every video category", async () =>
+{
+ var pages = new List<string>();
+ using var client = new BilibiliClient(new Handler(request => {
+  var path = request.RequestUri!.AbsolutePath;
+  if(path.EndsWith("/nav")) return Json(account);
+  var query = Text.ParseQuery(request.RequestUri.Query); Equal("42",query["mid"]);
+  if(path.EndsWith("/info")) return Json("""{"code":0,"data":{"mid":42,"name":"UP &amp; 名字","face":"//i0.hdslb.com/avatar.jpg","level":6,"vip":{"type":2,"status":1},"sign":"签名"}}""");
+  Equal("0",query["tid"]); pages.Add(query["pn"]);
+  return Json("""{"code":0,"data":{"page":{"count":31},"list":{"vlist":[{"aid":71,"bvid":"BV1xx411c7mD","mid":42,"title":"公开作品","author":"UP","pic":"//i0.hdslb.com/cover.jpg","length":"03:20"},{"bvid":"foreign","mid":88}]}}}""");
+ }));
+ await client.GetAccountAsync(); var user = await client.GetUserSpaceAsync(42);
+ Equal("UP & 名字",user.Name); Equal(6,user.Level); Equal("年度大会员",user.VipText); Equal("UID 42",user.UidText);
+ var first = await client.GetUserWorksAsync(42,1); var last = await client.GetUserWorksAsync(42,2);
+ Equal(1,first.Items.Count); True(first.HasMore); True(!last.HasMore); Equal(200d,first.Items[0].Duration); True(pages.SequenceEqual(new[]{"1","2"}));
+}));
+tests.Add(("Personal space fallback reads card schema and rejects a different UID", async () =>
+{
+ var mismatch = false;
+ using var client = new BilibiliClient(new Handler(request => {
+  if(request.RequestUri!.AbsolutePath.EndsWith("/nav")) return Json(account);
+  if(request.RequestUri.AbsolutePath.EndsWith("/info")) return Json("""{"code":-352}""");
+  return Json("""{"code":0,"data":{"card":{"mid":"42","name":"UP","level_info":{"current_level":5},"vip":{"vipType":1,"vipStatus":0}}}}""".Replace("\"42\"", mismatch ? "\"43\"" : "\"42\""));
+ }));
+ await client.GetAccountAsync(); var user = await client.GetUserSpaceAsync(42); Equal(5,user.Level); Equal("非大会员",user.VipText);
+ mismatch = true; await Throws<InvalidDataException>(()=>client.GetUserSpaceAsync(42));
+}));
+tests.Add(("Private conversations are read-only, ordered, paginated and limited to their participants", async () =>
+{
+ var calls = 0;
+ using var client = new BilibiliClient(new Handler(request => {
+  Equal(HttpMethod.Get,request.Method);
+  if(request.RequestUri!.AbsolutePath.EndsWith("/nav")) return Json(account);
+  True(request.RequestUri.AbsolutePath.EndsWith("/fetch_session_msgs"));
+  var query = Text.ParseQuery(request.RequestUri.Query); Equal("42",query["talker_id"]); Equal("1",query["session_type"]); calls++;
+  if(query.ContainsKey("begin_seqno")) { Equal("10",query["begin_seqno"]); return Json("""{"code":0,"data":{"has_more":0,"min_seqno":9,"messages":[{"msg_key":"older","msg_seqno":9,"sender_uid":42,"receiver_id":123,"msg_type":2,"content":"{\"url\":\"https://i0.hdslb.com/image.png\"}"}]}}"""); }
+  return Json("""{"code":0,"data":{"has_more":1,"min_seqno":10,"messages":[{"msg_key":"own","msg_seqno":11,"sender_uid":123,"receiver_id":42,"msg_type":1,"timestamp":1730000000,"content":"{\"content\":\"<hello>\"}"},{"msg_key":"peer","msg_seqno":10,"sender_uid":42,"receiver_id":123,"msg_type":1,"content":"{\"content\":\"你好\"}"},{"msg_seqno":12,"sender_uid":88,"receiver_id":123,"msg_type":1,"content":"private foreign message"}]}}""");
+ }));
+ await client.GetAccountAsync(); var first = await client.GetConversationAsync(42); Equal(2,first.Items.Count); True(first.HasMore); Equal("你好",first.Items[0].Text); True(first.Items[1].IsOwn); Equal("<hello>",first.Items[1].Text);
+ var older = await client.GetConversationAsync(42,first.BeforeSequence); True(!older.HasMore); Equal("https://i0.hdslb.com/image.png",older.Items.Single().Image); Equal(2,calls);
+}));
+
 var failures = 0;
 foreach(var test in tests)
 {

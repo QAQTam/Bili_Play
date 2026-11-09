@@ -16,7 +16,7 @@ public sealed record SocialUser(long Id, string Name, string Avatar, string Sign
 }
 public sealed record AccountNotification(string Category, string Title, string Content, string Time, string Avatar = "", string Url = "",
     bool IsLike = false, string TargetImage = "", string TargetText = "", string TargetKind = "内容", int ActorCount = 1,
-    IReadOnlyList<string>? ActorAvatars = null, string Action = "", string Id = "", long Timestamp = 0)
+    IReadOnlyList<string>? ActorAvatars = null, string Action = "", string Id = "", long Timestamp = 0, long TalkerId = 0, int SessionType = 1)
 {
     public IReadOnlyList<string> Avatars => ActorAvatars is { Count: > 0 } ? ActorAvatars : [Avatar];
     public string AvatarOne => Avatars.ElementAtOrDefault(0) ?? "";

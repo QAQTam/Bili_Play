@@ -136,7 +136,7 @@ public sealed partial class MainPage
                 AnimateBrowseElement(NotificationCategoryPicker,24,0);
                 QueueBrowseRows();
             }
-            else QueueBrowseRows();
+            else { if (ViewModel.IsSpaceView) AnimateBrowseElement(SpaceHeader,32,0); QueueBrowseRows(); }
         });
     }
     private void FinishBrowseEntrance()
