@@ -4,7 +4,6 @@ namespace BiliPlay.Core;
 
 public sealed record UserSpace(long Id, string Name, string Avatar, int Level, bool IsVip, int VipType, string Signature)
 {
-    public string LevelText => $"LV{Level}";
     public string VipText => !IsVip ? "非大会员" : VipType == 2 ? "年度大会员" : "大会员";
     public string UidText => $"UID {Id}";
 }

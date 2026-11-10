@@ -1,4 +1,4 @@
-param([switch]$IncludePublishOutput)
+﻿param([switch]$IncludePublishOutput)
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 foreach ($marker in @('BiliPlay.csproj', 'Core/BiliPlay.Core.csproj', 'Tests/BiliPlay.Tests.csproj')) {

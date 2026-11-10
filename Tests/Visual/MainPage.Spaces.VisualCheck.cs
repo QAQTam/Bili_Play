@@ -44,7 +44,23 @@ public sealed partial class MainPage
         ViewModel.IsEmpty = false;
         await Task.Delay(450); UpdateLayout();
         Check(SpaceHeader.Visibility == Visibility.Visible && SpaceHeader.ActualHeight >= 88 && TrackList.Visibility == Visibility.Visible, "个人空间头部或作品列表未显示");
-        Check(ViewModel.SpaceDetails.Contains("年度大会员") && ViewModel.SpaceDetails.Contains("UID 42"), "个人空间会员等级或 UID 缺失");
+        Check(SpaceVipBadge.Visibility == Visibility.Visible && ViewModel.SpaceVipDescription == "年度大会员"
+            && SpaceUidText.Text == "UID 42" && SpaceLevelText.Text == "Lv.6", "个人主页的大会员标识、等级或 UID 缺失");
+        Check(ToolTipService.GetToolTip(SpaceVipBadge) as string == "年度大会员", "大会员类型说明丢失");
+        var badge = SpaceVipBadge.TransformToVisual(SpaceAvatarFrame).TransformPoint(new(0,0));
+        Check(Math.Abs(badge.X+SpaceVipBadge.ActualWidth-SpaceAvatarFrame.ActualWidth)<1
+            && Math.Abs(badge.Y+SpaceVipBadge.ActualHeight-SpaceAvatarFrame.ActualHeight)<1
+            && badge.X<SpaceAvatarPicture.ActualWidth && badge.Y<SpaceAvatarPicture.ActualHeight, "大会员标识没有覆盖头像右下角");
+        var name = SpaceNameText.TransformToVisual(SpaceIdentity).TransformPoint(new(0,0));
+        var level = SpaceLevelBadge.TransformToVisual(SpaceIdentity).TransformPoint(new(0,0));
+        Check(Math.Abs(level.X-name.X-SpaceNameText.ActualWidth-8)<1
+            && Math.Abs(level.Y+SpaceLevelBadge.ActualHeight/2-name.Y-SpaceNameText.ActualHeight/2)<1, "等级没有紧邻昵称并居中对齐");
+        ViewModel.SpaceProfile = ViewModel.SpaceProfile! with { IsVip=false, VipType=0, Level=3 };
+        UpdateLayout();
+        Check(SpaceVipBadge.Visibility == Visibility.Collapsed && SpaceLevelText.Text == "Lv.3"
+            && !ViewModel.SpaceUid.Contains("非大会员"), "非大会员的主页仍显示会员标识或残留旧等级");
+        ViewModel.SpaceProfile = ViewModel.SpaceProfile! with { IsVip=true, VipType=2, Level=6 };
+        UpdateLayout();
         Check(SpaceFollowButton.Visibility == Visibility.Visible && (string)SpaceFollowButton.Content == "关注", "主页关注按钮缺失");
         var row = TrackList.ContainerFromIndex(0) as DependencyObject;
         var artwork = row is null ? null : FindVisual<CenteredCover>(row);
@@ -55,6 +71,22 @@ public sealed partial class MainPage
         SetBrowseMode(false); await Task.Delay(450); UpdateLayout();
         Check(TrackList.Visibility == Visibility.Visible && ViewModel.Store.GetSetting("spaceGrid", "true") == "false", "主页列表视图未恢复或未保存选择");
         await SaveVisualAsync(Path.Combine(directory, "personal-space.png"));
+        var windowSize = App.Window.AppWindow.Size;
+        var profile = ViewModel.SpaceProfile;
+        try
+        {
+            ViewModel.SpaceProfile = profile! with { Name=new string('名',100) };
+            var scale = XamlRoot.RasterizationScale;
+            App.Window.AppWindow.Resize(new((int)(840*scale),(int)(820*scale)));
+            await Task.Delay(120); UpdateLayout(); await Task.Delay(40);
+            var right = SpaceLevelBadge.TransformToVisual(SpaceIdentity).TransformPoint(new(SpaceLevelBadge.ActualWidth,0)).X;
+            Check(right <= SpaceIdentity.ActualWidth+1 && SpaceNameText.ActualWidth>0
+                && SpaceLevelBadge.ActualWidth>0, "窄窗口长昵称挤出了等级标识");
+            ViewModel.SpaceProfile = null; UpdateLayout();
+            Check(SpaceVipBadge.Visibility == Visibility.Collapsed && SpaceLevelBadge.Visibility == Visibility.Collapsed
+                && SpaceUidText.Text.Length==0, "切换主页加载期间残留了上一用户的会员、等级或 UID");
+        }
+        finally { ViewModel.SpaceProfile=profile; App.Window.AppWindow.Resize(windowSize); await Task.Delay(100); }
         var notification = new AccountNotification("私信", "离线私信", "", "", TalkerId:42);
         var conversation = ShowConversationAsync(notification, (before, token) => Task.FromResult(new ConversationPage([
             new("one",42,"对话中的 <原文> 不应丢失","",1,"2026-11-09 12:00",false),

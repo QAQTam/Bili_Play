@@ -42,6 +42,11 @@ public sealed record Folder(long Id, string Title, int Count, bool Owned, bool I
     public string FrontImage => HasContents ? Thumbnail(_preview?.Cover ?? Cover) : "";
     public string MiddleImage => Thumbnail(string.IsNullOrEmpty(_preview?.CoverMiddle ?? CoverMiddle) ? _preview?.Cover ?? Cover : _preview?.CoverMiddle ?? CoverMiddle);
     public string BackImage => Thumbnail(string.IsNullOrEmpty(_preview?.CoverBack ?? CoverBack) ? _preview?.Cover ?? Cover : _preview?.CoverBack ?? CoverBack);
+    public void RefreshImages()
+    {
+        foreach (var name in new[] { nameof(FrontImage), nameof(MiddleImage), nameof(BackImage) })
+            PropertyChanged?.Invoke(this, new(name));
+    }
     public void ApplyPreview(Folder preview)
     {
         var before = new[] { Detail, FrontImage, MiddleImage, BackImage, HasContents.ToString() };
@@ -95,9 +100,30 @@ public static partial class Text
     public static string CoverImage(string value, int width)
     {
         if (string.IsNullOrWhiteSpace(value)) return "";
-        if (Uri.TryCreate(value,UriKind.Absolute,out var local) && local.IsFile) return value;
-        return value.Split('@')[0] + $"@{width}w.webp";
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || !IsImageCdn(uri)) return value;
+        // Let the view crop from the original center, independent of the chosen codec.
+        var format = ArtworkFormats.UseWebp ? "webp" : "jpg";
+        return new UriBuilder(uri) { Path = uri.AbsolutePath.Split('@')[0] + $"@{width}w.{format}" }.Uri.AbsoluteUri;
     }
+    public static Uri CompatibleImageUri(Uri uri)
+    {
+        if (ArtworkFormats.UseWebp || !IsImageCdn(uri)) return uri;
+        var path = uri.AbsolutePath;
+        var parts = path.Split('@', 2);
+        var transform = parts.Length == 2 ? parts[1] : "";
+        if (transform.EndsWith(".webp", StringComparison.OrdinalIgnoreCase))
+            path = path[..^5] + ".png";
+        else if (parts[0].EndsWith(".webp", StringComparison.OrdinalIgnoreCase) &&
+                 !transform.EndsWith(".png", StringComparison.OrdinalIgnoreCase) &&
+                 !transform.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) &&
+                 !transform.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase))
+            path += parts.Length == 2 ? ".png" : "@.png";
+        else return uri;
+        // Preserve avatar sizing/cropping, transparency and query parameters.
+        return new UriBuilder(uri) { Path = path }.Uri;
+    }
+    private static bool IsImageCdn(Uri uri) => uri.Scheme == "https" && uri.IsDefaultPort &&
+        (uri.Host.Equals("hdslb.com", StringComparison.OrdinalIgnoreCase) || uri.Host.EndsWith(".hdslb.com", StringComparison.OrdinalIgnoreCase));
     public static string Clean(string value) => WebUtility.HtmlDecode(Tags().Replace(value, "")).Trim();
     public static string FormatTime(double seconds)
     {

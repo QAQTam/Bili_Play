@@ -1,4 +1,4 @@
-# Rebuild the vector-based app assets on Windows. No image-generation service required.
+﻿# Rebuild the vector-based app assets on Windows. No image-generation service required.
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $assetDirectory = Join-Path $PSScriptRoot '..\Assets'

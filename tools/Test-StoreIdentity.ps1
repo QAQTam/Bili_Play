@@ -1,4 +1,4 @@
-# Check the Partner Center identity without installing or registering a package.
+﻿# Check the Partner Center identity without installing or registering a package.
 param([Parameter(Mandatory)][xml]$Manifest)
 $ErrorActionPreference = 'Stop'
 if ([string]$Manifest.Package.Identity.Name -cne 'sodarx.BiliPlay' -or

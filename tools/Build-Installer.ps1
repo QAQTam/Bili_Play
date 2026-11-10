@@ -1,4 +1,4 @@
-# Build a clean production MSIX. Signing keys stay outside the repository and are never distributed.
+﻿# Build a clean production MSIX. Signing keys stay outside the repository and are never distributed.
 param([string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))

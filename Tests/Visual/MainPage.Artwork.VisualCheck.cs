@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage;
 using Windows.Storage.Streams;
 using Windows.Graphics.Imaging;
+using BiliPlay.Core;
 
 namespace BiliPlay;
 
@@ -58,6 +59,34 @@ public sealed partial class MainPage
             cover.Source = cacheHit;
             for (var attempt = 0; attempt < 100 && cacheHit.PixelWidth == 0; attempt++) await Task.Delay(20);
             Check(cacheHit.PixelWidth > 0 && ReferenceEquals(brush.ImageSource, cacheHit), "预先设置 URI 的实际缓存图片未解码");
+
+            // The replacement CDN format must also render through the production
+            // .img disk-cache path, without relying on a WebP extension.
+            var jpegPath = Path.Combine(directory, "native-jpeg-cover.img");
+            using (var output = new InMemoryRandomAccessStream())
+            {
+                var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, output);
+                encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, 8, 8, 96, 96,
+                    Enumerable.Range(0, 64).SelectMany(_ => new byte[] { 255, 0, 0, 255 }).ToArray());
+                await encoder.FlushAsync(); output.Seek(0);
+                using var file = File.Create(jpegPath); await output.AsStreamForRead().CopyToAsync(file);
+            }
+            var jpeg = BiliPlay.Services.ArtworkCache.Create(new Uri(jpegPath), 48);
+            cover.Source = jpeg;
+            await AssertColorAsync(cover, 0, "JPEG 缓存封面没有实际渲染");
+            cover.Source = BiliPlay.Services.ArtworkCache.CreateAvatar(new Uri(cachedPath), 48);
+            await AssertColorAsync(cover, 1, "PNG 头像缓存没有实际渲染");
+            var supportsWebp = await BiliPlay.Services.ImageCodecSupport.SupportsWebpAsync();
+            Check(supportsWebp == ArtworkFormats.WebpSupported, "启动未应用系统的实际 WebP 解码检测结果");
+            if (supportsWebp)
+            {
+                var webpPath = Path.Combine(directory, "native-webp-cover.img");
+                await File.WriteAllBytesAsync(webpPath, Convert.FromBase64String(BiliPlay.Services.ImageCodecSupport.WebpSample));
+                var webp = BiliPlay.Services.ArtworkCache.Create(new Uri(webpPath), 48);
+                cover.Source = webp;
+                for (var attempt = 0; attempt < 100 && webp.PixelWidth == 0; attempt++) await Task.Delay(20);
+                Check(webp.PixelWidth == 1 && webp.PixelHeight == 1, "WebP 探测通过但真实封面路径未解码");
+            }
 
             var slow = new BitmapImage(); var selected = new BitmapImage();
             cover.Source = slow;

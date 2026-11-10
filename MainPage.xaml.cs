@@ -124,6 +124,12 @@ public sealed partial class MainPage : Page
         Grid.SetRow(FooterActions, compact ? 2 : 1);
         FooterActions.Spacing = 8;
     }
+    private void SpaceIdentitySizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        if (SpaceNameText is null || SpaceIdentity is null || SpaceLevelBadge is null) return;
+        var badgeWidth = SpaceLevelBadge.Visibility == Visibility.Visible ? SpaceLevelBadge.ActualWidth + 8 : 0;
+        SpaceNameText.MaxWidth = Math.Max(0, SpaceIdentity.ActualWidth - badgeWidth);
+    }
     private void SettingsViewportSizeChanged(object sender,SizeChangedEventArgs args)
     {
         if(SettingsAboutColumn is null||AboutPanel is null) return;
@@ -177,6 +183,8 @@ public sealed partial class MainPage : Page
         }
         if (_initialized) return;
         _initialized = true;
+        await ArtworkCache.InitializeAsync(ViewModel.ImageCompatibilityMode);
+        if (!IsLoaded) return;
 #if VISUAL_CHECKS
         if (App.IsVisualCheck && !DebugSession.IsActive) { await RunVisualCheckAsync(); return; }
 #endif

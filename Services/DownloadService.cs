@@ -45,6 +45,7 @@ public sealed class DownloadService(Func<AudioProxy>? createProxy = null)
                 while ((read = await input.ReadAsync(buffer, ct)) > 0)
                 { await output.WriteAsync(buffer.AsMemory(0, read), ct); copied += read; if (total > 0) progress?.Report(70d * copied / total); }
             }
+            ct.ThrowIfCancellationRequested();
             await ConvertToMp3Async(source, staging, new Progress<double>(value => progress?.Report(70 + value * .3)), ct, options?.Bitrate ?? 192000);
             ct.ThrowIfCancellationRequested();
             File.Move(staging, target);
@@ -59,9 +60,18 @@ public sealed class DownloadService(Func<AudioProxy>? createProxy = null)
     {
         for (var attempt = 0; ; attempt++)
         {
-            try { File.Delete(file); return; }
+            try
+            {
+                File.Delete(file);
+                // Windows can leave a delete-pending directory entry until the
+                // decoder or scanner releases its last handle. Wait for removal.
+                var folder = Path.GetDirectoryName(Path.GetFullPath(file))!;
+                if (!Directory.EnumerateFiles(folder,Path.GetFileName(file)).Any()) return;
+                if (attempt >= 8) throw new IOException("文件仍在被使用，暂时无法完成删除。");
+            }
             catch (DirectoryNotFoundException) { return; }
-            catch (IOException) when (attempt < 8) { await Task.Delay(100); }
+            catch (IOException) when (attempt < 8) { }
+            await Task.Delay(100);
         }
     }
     public static async Task DeleteCachedFilesAsync(Track track)
@@ -72,9 +82,11 @@ public sealed class DownloadService(Func<AudioProxy>? createProxy = null)
     }
     public static async Task ConvertToMp3Async(string source, string destination, IProgress<double>? progress, CancellationToken ct, int bitrate = 192000)
     {
+        ct.ThrowIfCancellationRequested();
         if (bitrate is not (192000 or 320000)) throw new ArgumentOutOfRangeException(nameof(bitrate));
         var inputFile = await StorageFile.GetFileFromPathAsync(Path.GetFullPath(source));
         var folder = await StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(Path.GetFullPath(destination))!);
+        ct.ThrowIfCancellationRequested();
         var outputFile = await folder.CreateFileAsync(Path.GetFileName(destination), CreationCollisionOption.FailIfExists);
         var profile = MediaEncodingProfile.CreateMp3(AudioEncodingQuality.High);
         profile.Audio.Bitrate = (uint)bitrate;

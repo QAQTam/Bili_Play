@@ -11,7 +11,9 @@ public sealed class AudioProxy : IDisposable
     private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
     private readonly CancellationTokenSource _stop = new();
     private readonly HttpClient _http;
-    private readonly ConcurrentDictionary<string, AudioStream> _sources = new();
+    private sealed record RelaySource(AudioStream Stream, CancellationToken Token);
+    private readonly ConcurrentDictionary<string, RelaySource> _sources = new();
+    private CancellationTokenSource? _sourceLifetime;
     private readonly SemaphoreSlim _slots = new(8);
     private readonly ConcurrentDictionary<TcpClient, byte> _clients = new();
     private readonly int _port;
@@ -23,18 +25,27 @@ public sealed class AudioProxy : IDisposable
         { Timeout = Timeout.InfiniteTimeSpan };
         _listener.Start();
         _port = ((IPEndPoint)_listener.LocalEndpoint).Port;
-        _ = AcceptAsync();
+        // Native decoder teardown can synchronously wait for its HTTP connection.
+        // The relay must never need the UI thread to accept or finish that request.
+        _ = Task.Run(AcceptAsync);
     }
     public Uri SetSource(AudioStream stream)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (!Text.IsMediaHost(stream.Url)) throw new ArgumentException("Unsupported audio host.", nameof(stream));
         var key = Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(24));
-        _sources.Clear();
-        _sources[key] = stream;
+        Clear();
+        _sourceLifetime = new();
+        _sources[key] = new(stream, _sourceLifetime.Token);
         return new($"http://127.0.0.1:{_port}/{key}");
     }
-    public void Clear() => _sources.Clear();
+    public void Clear()
+    {
+        _sources.Clear();
+        var lifetime = _sourceLifetime; _sourceLifetime = null;
+        lifetime?.Cancel(); lifetime?.Dispose();
+        foreach (var client in _clients.Keys) client.Dispose();
+    }
     private async Task AcceptAsync()
     {
         try
@@ -83,12 +94,12 @@ public sealed class AudioProxy : IDisposable
                 }
                 if (!_sources.TryGetValue(parts[1].TrimStart('/'), out var source))
                 { await ErrorAsync(network, 404, "Not Found"); return; }
-                using var streamTimeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+                using var streamTimeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token, source.Token);
                 streamTimeout.CancelAfter(TimeSpan.FromHours(12));
                 HttpResponseMessage? upstream = null;
-                using var connectionBudget = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+                using var connectionBudget = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token, source.Token);
                 connectionBudget.CancelAfter(TimeSpan.FromSeconds(30));
-                foreach (var candidate in new[] { source.Url }.Concat(source.Backups).Distinct())
+                foreach (var candidate in new[] { source.Stream.Url }.Concat(source.Stream.Backups).Distinct())
                 {
                     var url = candidate;
                     using var attempt = CancellationTokenSource.CreateLinkedTokenSource(connectionBudget.Token);
@@ -148,8 +159,6 @@ public sealed class AudioProxy : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _stop.Cancel(); _listener.Stop(); _http.Dispose();
-        foreach (var client in _clients.Keys) client.Dispose();
-        _sources.Clear();
+        _stop.Cancel(); _listener.Stop(); Clear(); _http.Dispose();
     }
 }

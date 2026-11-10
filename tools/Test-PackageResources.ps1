@@ -1,4 +1,4 @@
-# Verify resources through the installed-package lookup path, not adjacent PRI files.
+﻿# Verify resources through the installed-package lookup path, not adjacent PRI files.
 param(
     [Parameter(Mandatory)][string]$PriPath,
     [Parameter(Mandatory)][string]$PackageName

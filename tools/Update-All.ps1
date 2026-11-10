@@ -1,4 +1,4 @@
-# Build and verify both profiles, deliver the installer, and clean generated output.
+﻿# Build and verify both profiles, deliver the installer, and clean generated output.
 # Installation and package registration are performed only by the user.
 param([string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'

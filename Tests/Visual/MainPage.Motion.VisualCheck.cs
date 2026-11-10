@@ -3,6 +3,7 @@ using System.Numerics;
 using BiliPlay.Core;
 using BiliPlay.ViewModels;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 
@@ -101,6 +102,9 @@ public sealed partial class MainPage
             Check(_browseEntranceRows>0&&_browseRowsEntered,"异步加载的首页图标没有甩入");
             var template=RecommendationGrid.ContainerFromIndex(0) as GridViewItem;
             Check(template?.ContentTemplateRoot is UIElement content&&_browseMotionElements.Contains(content),"图标没有在模板内容上执行甩入");
+            Check(template?.ContentTemplateRoot is FrameworkElement tile && tile.Margin == new Thickness(0)
+                && Math.Abs(tile.ActualWidth-template.ActualWidth)<1 && Math.Abs(tile.ActualHeight-template.ActualHeight)<1
+                && template.FocusVisualMargin.Left >= 0, "首页图标悬浮区域包含了卡片外间距");
             var lateTrack=new Track(999,"BV9xx411c7mD","第二批推荐","合成 UP 主","",100);
             var previousVersion=_browseTransition;
             ViewModel.Tracks.Add(lateTrack);
@@ -133,6 +137,12 @@ public sealed partial class MainPage
                 if(NotificationList.ContainerFromIndex(i) is ListViewItem row)
                 {
                     Check(row.ActualWidth<=860,"通知行超出最大宽度");Check(row.ActualHeight<150,"通知引用文字未截断，撑高了整行");
+                    Check(row.ContentTemplateRoot is Border card && card.Margin == new Thickness(0)
+                        && row.Padding == new Thickness(0) && Math.Abs(card.ActualWidth-row.ActualWidth)<1 && Math.Abs(card.ActualHeight-row.ActualHeight)<1,
+                        "通知条目的悬浮区域超出卡片边框");
+                    Check(FindVisual<Microsoft.UI.Xaml.Controls.Primitives.ListViewItemPresenter>(row)?.CornerRadius == new CornerRadius(8), "通知悬浮背景圆角与卡片不一致");
+                    var gap = row.TransformToVisual((UIElement)XamlRoot.Content).TransformPoint(new(10,row.ActualHeight+4));
+                    Check(!VisualTreeHelper.FindElementsInHostCoordinates(gap,this,false).Contains(row), "通知间距仍能命中上一条通知");
                     var right=row.TransformToVisual(NotificationsScroller).TransformPoint(new(row.ActualWidth,0)).X;
                     Check(right<=NotificationsScroller.ActualWidth-20,"通知缩略图超出了页面可见范围");
                 }

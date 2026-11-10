@@ -12,15 +12,33 @@ public static class ArtworkCache
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<BitmapImage,Uri> Sources = new();
     private static readonly Dictionary<string,WeakReference<BitmapImage>> Memory = [];
     private static readonly LinkedList<(string Key, BitmapImage Image)> Avatars = new();
+    private static int _formatVersion;
+    private static Task _clearing = Task.CompletedTask;
+    public static async Task InitializeAsync(bool compatibilityMode)
+    {
+        var supported = await ImageCodecSupport.SupportsWebpAsync();
+        ArtworkFormats.Configure(supported, compatibilityMode);
+        Memory.Clear(); Avatars.Clear(); _formatVersion++;
+    }
+    public static void SetCompatibilityMode(bool enabled)
+    {
+        if(ArtworkFormats.CompatibilityMode==enabled)return;
+        ArtworkFormats.Configure(ArtworkFormats.WebpSupported, enabled);
+        Memory.Clear(); Avatars.Clear(); _formatVersion++;
+    }
     public static Uri? SourceUri(BitmapImage? image) => image is null?null:Sources.TryGetValue(image,out var uri)?uri:image.UriSource;
     public static async Task<Uri> ResolveUriAsync(Uri uri)
     {
+        uri=Text.CompatibleImageUri(uri);
         if(uri.Scheme!="https"||App.IsVisualCheck||DebugSession.IsActive)return uri;
         var cache=Cache.Value;
-        var path=await Task.Run(()=>cache.GetAsync(uri));return path is null?uri:new Uri(path);
+        try { await _clearing; }
+        catch(Exception error) when(error is IOException or UnauthorizedAccessException or ObjectDisposedException) { return uri; }
+        var path=await cache.GetAsync(uri);return path is null?uri:new Uri(path);
     }
     public static BitmapImage CreateAvatar(Uri uri, int width)
     {
+        uri=Text.CompatibleImageUri(uri);
         var key=$"{width}:{uri.AbsoluteUri}";
         for(var node=Avatars.First;node is not null;node=node.Next)
         {
@@ -43,6 +61,7 @@ public static class ArtworkCache
     }
     public static BitmapImage Create(Uri uri,int width)
     {
+        uri=Text.CompatibleImageUri(uri);
         var key=$"{width}:{uri.AbsoluteUri}";
         if(Memory.TryGetValue(key,out var weak)&&weak.TryGetTarget(out var existing))return existing;
         var image=new BitmapImage { DecodePixelWidth=width };Sources.Add(image,uri);
@@ -53,10 +72,22 @@ public static class ArtworkCache
     }
     private static async Task LoadAsync(BitmapImage image,Uri uri)
     {
+        var version=_formatVersion;
         var resolved=await ResolveUriAsync(uri);
+        if(version!=_formatVersion)return;
         try {image.UriSource=resolved;}
         catch(Exception e) when(e is System.Runtime.InteropServices.COMException or ArgumentException) { }
     }
-    public static void ResetScope() { Memory.Clear(); Avatars.Clear(); Sources.Clear(); if(Cache.IsValueCreated)Cache.Value.Dispose(); Cache=NewCache(); }
-    public static Task ClearAsync() { Memory.Clear(); Avatars.Clear(); var cache=Cache.Value;return Task.Run(()=>cache.ClearAsync()); }
+    public static void ResetScope() { _formatVersion++; Memory.Clear(); Avatars.Clear(); Sources.Clear(); _clearing=Task.CompletedTask; if(Cache.IsValueCreated)Cache.Value.Dispose(); Cache=NewCache(); }
+    public static Task ClearAsync()
+    {
+        _formatVersion++; Memory.Clear(); Avatars.Clear();
+        return _clearing=ClearAfterAsync(_clearing,Cache.Value);
+    }
+    private static async Task ClearAfterAsync(Task previous,ImageDiskCache cache)
+    {
+        try { await previous.ConfigureAwait(false); }
+        catch(Exception error) when(error is IOException or UnauthorizedAccessException or ObjectDisposedException) { }
+        await Task.Run(()=>cache.ClearAsync()).ConfigureAwait(false);
+    }
 }

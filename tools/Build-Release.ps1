@@ -1,4 +1,4 @@
-param([switch]$Production)
+﻿param([switch]$Production)
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $portable = Join-Path $taskRoot $(if ($Production) { 'dist/Bili_Play-Release-win-x64' } else { 'dist/Bili_Play-win-x64' })

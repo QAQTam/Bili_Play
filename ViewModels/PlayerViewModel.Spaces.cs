@@ -10,11 +10,15 @@ public sealed partial class PlayerViewModel
     [ObservableProperty] public partial bool IsSpaceLoading { get; set; }
     private long _spaceUserId;
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SpaceName), nameof(SpaceAvatar), nameof(SpaceDetails), nameof(SpaceSignature), nameof(CanFollowSpace), nameof(CanToggleSpaceFollow))]
+    [NotifyPropertyChangedFor(nameof(SpaceName), nameof(SpaceAvatar), nameof(SpaceLevel), nameof(SpaceUid), nameof(SpaceHasVip), nameof(SpaceHasLevel), nameof(SpaceVipDescription), nameof(SpaceSignature), nameof(CanFollowSpace), nameof(CanToggleSpaceFollow))]
     public partial UserSpace? SpaceProfile { get; set; }
     public string SpaceName => SpaceProfile?.Name ?? "正在读取个人空间…";
     public string SpaceAvatar => SpaceProfile?.Avatar ?? "";
-    public string SpaceDetails => SpaceProfile is { } user ? $"{user.LevelText}  ·  {user.VipText}  ·  {user.UidText}" : "";
+    public string SpaceLevel => SpaceProfile is { } user ? $"Lv.{user.Level}" : "";
+    public string SpaceUid => SpaceProfile?.UidText ?? "";
+    public bool SpaceHasVip => SpaceProfile?.IsVip == true;
+    public bool SpaceHasLevel => SpaceProfile is not null;
+    public string SpaceVipDescription => SpaceHasVip ? SpaceProfile!.VipText : "";
     public string SpaceSignature => SpaceProfile?.Signature ?? "";
     public bool CanFollowSpace => IsSpaceView && SpaceProfile is { } profile && profile.Id != Client.Account?.Id;
     public bool CanToggleSpaceFollow => CanFollowSpace && !IsSpaceFollowBusy;

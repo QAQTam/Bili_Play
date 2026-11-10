@@ -26,6 +26,7 @@ public sealed partial class MainPage
         try
         {
             ViewModel.CloseToTray = false;
+            Check(ViewModel.IsInitializing && LoginSurface.Visibility == Visibility.Collapsed && StartupSurface.Visibility == Visibility.Visible, "首帧在恢复账号前闪现了二维码登录页面");
             await VerifyLoginLayoutAsync(directory);
             await VerifyDebugModeAsync(directory);
             await VerifyArtworkReplacementAsync(directory);
@@ -33,6 +34,7 @@ public sealed partial class MainPage
             ViewModel.Client.RestoreCachedAccount(new(123, "离线布局验证", ""));
             ViewModel.IsLoggedIn = true;
             await VerifyStartupResponsivenessAsync();
+            await VerifyRapidAudioSwitchingAsync();
             await VerifyDownloadLabelsAndAboutAsync(directory);
             await VerifyPageEntrancesAsync();
             await VerifySpacesAndConversationsAsync(directory);
@@ -182,6 +184,9 @@ public sealed partial class MainPage
             for (var i = 0; i < 4; i++)
             {
                 if (list.ContainerFromIndex(i) is not FrameworkElement item) continue;
+                if (grid && item is GridViewItem container && container.ContentTemplateRoot is Border card)
+                    Check(Math.Abs(card.ActualWidth-item.ActualWidth)<1 && Math.Abs(card.ActualHeight-item.ActualHeight)<1
+                        && card.Margin == new Thickness(0), "收藏夹悬浮区域大于可见卡片边框");
                 var point = item.TransformToVisual(list).TransformPoint(new(0,0));
                 var box = new Windows.Foundation.Rect(point.X,point.Y,item.ActualWidth,item.ActualHeight);
                 foreach (var other in boxes)

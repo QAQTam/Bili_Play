@@ -157,9 +157,13 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _folderPreviews;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LoginVisibility), nameof(LibraryVisibility), nameof(CanGoBack), nameof(NotificationMargin))]
+    [NotifyPropertyChangedFor(nameof(LoginVisibility), nameof(LibraryVisibility), nameof(StartupVisibility), nameof(CanGoBack), nameof(NotificationMargin))]
     public partial bool IsLoggedIn { get; set; }
-    public Visibility LoginVisibility => IsLoggedIn ? Visibility.Collapsed : Visibility.Visible;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LoginVisibility), nameof(StartupVisibility))]
+    public partial bool IsInitializing { get; set; } = true;
+    public Visibility StartupVisibility => IsInitializing && !IsLoggedIn ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility LoginVisibility => IsLoggedIn || IsInitializing ? Visibility.Collapsed : Visibility.Visible;
     public Visibility LibraryVisibility => IsLoggedIn ? Visibility.Visible : Visibility.Collapsed;
     [ObservableProperty] public partial string AccountName { get; set; } = "尚未登录";
     [ObservableProperty] public partial ImageSource? AccountAvatar { get; set; }
@@ -359,9 +363,11 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         if (HasMore && IsLoggedIn) await LoadMoreCommand.ExecuteAsync(null);
     }
     public PlayerViewModel() : this(new BilibiliClient(DebugSession.IsActive ? new DebugSession.OfflineHandler() : null)) { }
-    internal PlayerViewModel(BilibiliClient client)
+    private readonly Func<IReadOnlyList<SavedCookie>> _readSession;
+    internal PlayerViewModel(BilibiliClient client, Func<IReadOnlyList<SavedCookie>>? readSession = null)
     {
         Client = client;
+        _readSession = readSession ?? SessionVault.Read;
         PropertyChanged += (_, args) => { if (args.PropertyName is nameof(IsHistoryView) or nameof(IsPlaylistView) or nameof(IsEmpty)) UpdateClearAvailability(); };
         Tracks.CanLoadMore = () => IsLoggedIn && HasMore && (_view is "home" or "folder" or "space" || _view == "search" && !IsSearchUploaders);
         Uploaders.CanLoadMore = () => IsLoggedIn && HasMore && IsSearchUploaders;
@@ -380,6 +386,8 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         DoubleClickBehaviorIndex = ReadTrackBehavior("doubleClickBehavior", 1);
         RecordRecentPlays = Store.RecordRecentPlays;
         RecordSearchHistory = Store.RecordSearchHistory;
+        ImageCompatibilityMode = Store.GetSetting("imageCompatibilityMode", "false") == "true";
+        ArtworkCache.SetCompatibilityMode(ImageCompatibilityMode);
         CloseToTray = Store.GetSetting("closeToTray", "true") != "false";
         CloseBehaviorIndex = int.TryParse(Store.GetSetting("closeBehavior", CloseToTray ? "0" : "1"), out var behavior) ? behavior : 0;
         var savedDirectory = Store.GetSetting("cacheDirectory", DebugSession.DirectoryPath is { } debugRoot ? Path.Combine(debugRoot,"downloads") : DownloadService.CacheDirectory(0));
@@ -412,13 +420,19 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         Player.SkipRequested += next => _ = SafeAsync(() => MoveAsync(next, false), false);
         _timer.Tick += (_, _) => Tick();
         if (!App.IsVisualCheck) _timer.Start();
+        _loadingSettings = false;
     }
     public async Task InitializeAsync()
+    {
+        try { await InitializeSessionAsync(); }
+        finally { IsInitializing = false; }
+    }
+    private async Task InitializeSessionAsync()
     {
         if (DebugSession.IsActive) { await InitializeDebugAsync(); return; }
         _login?.Cancel();
         LoginLoading = true; LoginStatus = "正在连接哔哩哔哩…";
-        var cookies = SessionVault.Read();
+        var cookies = _readSession();
         if (cookies.Count > 0)
         {
             Client.ImportSession(cookies);
@@ -435,6 +449,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
             },busy:false);
             return;
         }
+        IsInitializing = false;
         await LoginAsync();
     }
     private async Task VerifySavedAccountAsync()
@@ -498,8 +513,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         ProfileManager.UpdateAccount(Client.Account);
         AccountUid = Client.Account.Id.ToString(); AccountLevel = $"Lv.{Client.Account.Level}";
         Replace(SearchHistory, Store.SearchHistory(Client.Account!.Id));
-        AccountAvatar = Uri.TryCreate(Client.Account.Avatar, UriKind.Absolute, out var avatar) ? ArtworkCache.CreateAvatar(avatar,80) : null;
-        AccountLargeAvatar = avatar is not null ? ArtworkCache.CreateAvatar(new Uri(avatar.GetLeftPart(UriPartial.Path).Split('@')[0] + "@320w_320h_1c.webp"),320) : null;
+        RefreshAccountArtwork();
         if(!App.IsVisualCheck && !DebugSession.IsActive) _ = ArtworkCache.WarmAsync(ProfileManager.WithDefault().Select(profile=>profile.Avatar), _lifetime.Token);
         IsVip = Client.Account.IsVip;
         var accountChanged=_queueAccount!=Client.Account.Id;
@@ -1234,8 +1248,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
             _ = RefreshFavoriteStateAsync();
             _currentUploader = 0; IsFollowingUploader = false; CanFollowUploader = false;
             _ = LoadUploaderRelationAsync(track);
-            CurrentCover = Uri.TryCreate(Text.CoverImage(track?.Cover ?? "", 512), UriKind.Absolute, out var cover) ? ArtworkCache.Create(cover,512) : null;
-            LyricsCover = Uri.TryCreate(track?.Artwork, UriKind.Absolute, out var artwork) ? ArtworkCache.Create(artwork,960) : null;
+            RefreshCurrentArtwork();
             if (track is not null && Client.Account is { Id: > 0 } account)
                 Store.SetSetting($"queueCurrent:{account.Id}", $"{track.Bvid}:{track.Page}");
         }
@@ -1245,6 +1258,16 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         Duration = Math.Max(1, duration);
         RemainingText = "−" + Text.FormatTime(Math.Max(0, duration - Position));
         UpdateSubtitleHighlight();
+    }
+    private void RefreshCurrentArtwork()
+    {
+        CurrentCover = Uri.TryCreate(Text.CoverImage(CurrentTrack?.Cover ?? "", 512), UriKind.Absolute, out var cover) ? ArtworkCache.Create(cover,512) : null;
+        LyricsCover = Uri.TryCreate(CurrentTrack?.Artwork, UriKind.Absolute, out var artwork) ? ArtworkCache.Create(artwork,960) : null;
+    }
+    private void RefreshAccountArtwork()
+    {
+        AccountAvatar = Uri.TryCreate(Client.Account?.Avatar, UriKind.Absolute, out var avatar) ? ArtworkCache.CreateAvatar(avatar,80) : null;
+        AccountLargeAvatar = avatar is not null ? ArtworkCache.CreateAvatar(new UriBuilder(avatar) { Path = avatar.AbsolutePath.Split('@')[0] + "@320w_320h_1c.webp" }.Uri,320) : null;
     }
     public async Task RefreshFavoriteStateAsync()
     {

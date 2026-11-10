@@ -12,6 +12,7 @@ public sealed partial class MainPage
     {
         Check(App.Window.Title == "Bili Play", "开发版窗口不应显示 Dev 后缀");
         ViewModel.IsLoggedIn = false;
+        ViewModel.IsInitializing = false;
         ViewModel.LoginLoading = false;
         ViewModel.LoginStatus = "使用哔哩哔哩手机客户端扫码登录";
         using var code = QRCodeGenerator.GenerateQrCode("https://www.bilibili.com/", QRCodeGenerator.ECCLevel.M);

@@ -7,6 +7,8 @@ namespace BiliPlay.ViewModels;
 public sealed partial class DownloadJob(Track track, long account, string directory, CancellationTokenSource cancellation, DownloadOptions? options = null) : ObservableObject
 {
     public Track Track { get; } = track;
+    public string Thumbnail => Track.Thumbnail;
+    public void RefreshArtwork() => OnPropertyChanged(nameof(Thumbnail));
     public DownloadOptions? Options { get; } = options;
     public long Account { get; } = account;
     public string Directory { get; } = directory;

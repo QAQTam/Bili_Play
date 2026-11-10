@@ -9,8 +9,53 @@ namespace BiliPlay;
 
 public sealed partial class MainPage
 {
+    private async Task VerifyRapidAudioSwitchingAsync()
+    {
+        // Exercise native decoder teardown on the real UI context, with synthetic audio only.
+        using var bytes = new MemoryStream();
+        using (var writer = new BinaryWriter(bytes, System.Text.Encoding.ASCII, true))
+        {
+            writer.Write("RIFF"u8); writer.Write(16036); writer.Write("WAVEfmt "u8);
+            writer.Write(16); writer.Write((short)1); writer.Write((short)1);
+            writer.Write(8000); writer.Write(16000); writer.Write((short)2); writer.Write((short)16);
+            writer.Write("data"u8); writer.Write(16000); writer.Write(new byte[16000]);
+        }
+        using var deck = new AudioPlayback(new RapidAudioHandler(bytes.ToArray()));
+        var stream = new AudioStream(new("https://upos.bilivideo.com/ui-stress.wav"), "audio/wav", []);
+        for (var index = 0; index < 20; index++)
+        {
+            deck.SetSource(stream); deck.Player.Play();
+            ViewModel.Navigate(index % 2 == 0 ? "settings" : "home");
+            var pulse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            App.DispatcherQueue.TryEnqueue(DispatcherQueuePriority.High, () => pulse.TrySetResult());
+            await pulse.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            await Task.Delay(12);
+        }
+        deck.Proxy.Clear(); deck.Player.Pause(); deck.Player.Source = null;
+        Check(App.DispatcherQueue.HasThreadAccess, "连续切歌测试未在界面线程执行");
+    }
+    private sealed class RapidAudioHandler(byte[] wave) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            await Task.Delay(8, token).ConfigureAwait(false);
+            var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent(wave) };
+            response.Content.Headers.ContentType = new("audio/wav");
+            return response;
+        }
+    }
     private async Task VerifyStartupResponsivenessAsync()
     {
+        using (var restored = new PlayerViewModel(new BilibiliClient(new StartupMetadataHandler()), () =>
+            [new("DedeUserID", "123", ".bilibili.com", "/", DateTime.UtcNow.AddDays(1))]))
+        {
+            var loginFlashed = restored.LoginVisibility == Visibility.Visible;
+            restored.PropertyChanged += (_, args) =>
+            { if (args.PropertyName == nameof(restored.LoginVisibility) && restored.LoginVisibility == Visibility.Visible) loginFlashed = true; };
+            await restored.InitializeAsync();
+            Check(restored.IsLoggedIn && !restored.IsInitializing && !loginFlashed && restored.QrImage is null,
+                "恢复已保存登录时经过了二维码界面");
+        }
         using var model=new PlayerViewModel(new BilibiliClient(new StartupMetadataHandler()));
         model.Client.RestoreCachedAccount(new(123,"启动性能隔离验证",""));model.IsLoggedIn=true;
         await model.EnterAccountAsync(false);
@@ -85,7 +130,41 @@ public sealed partial class MainPage
             ViewModel.SearchGridMode=false;Check(ViewModel.IsUploaderListView&&!ViewModel.IsUploaderGridView,"UP 主列表视图切换失败");ViewModel.SearchCategoryIndex=0;
             ViewModel.Navigate("settings");
             await BiliPlay.Services.ArtworkCache.ClearAsync();Check(ClearImageCacheButton.Content as string=="清除缓存","图片缓存入口缺失");
-            Check(SettingsOptions.Children.SequenceEqual(new UIElement[]{AppThemeBox,CloseBehaviorBox,RecordHistorySwitch,RecordSearchHistorySwitch,SingleClickBehaviorBox,DoubleClickBehaviorBox,DownloadFolderSetting,ImageCacheSetting}),"设置顺序不符合要求");
+            Check(SettingsOptions.Children.SequenceEqual(new UIElement[]{GeneralSettings,HistorySettings,PlaybackSettings,StorageSettings,CompatibilitySettings}),"设置分类不完整");
+            Check(HistorySettings.Children.OfType<TextBlock>().Single().Text == "隐私", "隐私分类名称未更新");
+            Check(GeneralSettings.Children.Contains(AppThemeBox) && GeneralSettings.Children.Contains(CloseBehaviorBox)
+                && HistorySettings.Children.Contains(RecordHistorySwitch) && HistorySettings.Children.Contains(RecordSearchHistorySwitch)
+                && PlaybackSettings.Children.Contains(SingleClickBehaviorBox) && PlaybackSettings.Children.Contains(DoubleClickBehaviorBox)
+                && StorageSettings.Children.Contains(DownloadFolderSetting) && StorageSettings.Children.Contains(ImageCacheSetting)
+                && CompatibilitySettings.Children.Contains(ImageCompatibilityOption) && ImageCompatibilityOption.Children.Contains(ImageCompatibilitySwitch), "设置项没有归入正确分类");
+            Check(ImageCompatibilityInfo.Glyph == "\uE946" && ToolTipService.GetToolTip(ImageCompatibilityInfo) is string tip && tip.Contains("JPEG") && tip.Contains("PNG"), "兼容模式没有信息图标和格式说明");
+            for (DependencyObject? node = ImageCompatibilityInfo; node is not null; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
+                Check(node is not UIElement element || element.IsHitTestVisible, "兼容模式说明位于不接收鼠标的原生标题区域，无法悬浮");
+            var compatibility = ViewModel.ImageCompatibilityMode;
+            var systemWebp = ArtworkFormats.WebpSupported;
+            var imageDirectory = Path.Combine(directory, "data", "cache", "images");
+            Directory.CreateDirectory(imageDirectory);
+            var oldCache = Path.Combine(imageDirectory, new string('d',64) + ".img");
+            var keep = Path.Combine(imageDirectory, "keep.txt");
+            await File.WriteAllTextAsync(oldCache, "old artwork fixture");
+            await File.WriteAllTextAsync(keep, "unrelated fixture");
+            var before = ArtworkCache.Create(new Uri(Path.Combine(directory,"cover.png")),48);
+            var fixture = new Track(71,"BV7xx411c7mD","图片刷新验证","合成用户",new Uri(Path.Combine(directory,"cover.png")).AbsoluteUri,30);
+            ViewModel.Tracks.Add(fixture);
+            ImageCompatibilitySwitch.IsOn = true;
+            await ViewModel.ImageCompatibilityUpdate;
+            Check(ViewModel.ImageCompatibilityMode && !ArtworkFormats.UseWebp && ViewModel.Store.GetSetting("imageCompatibilityMode", "") == "true", "兼容模式没有立即保存或仍在请求 WebP");
+            Check(!File.Exists(oldCache) && File.Exists(keep), "兼容模式没有清理图片缓存或误删了其他文件");
+            Check(!ReferenceEquals(before,ArtworkCache.Create(new Uri(Path.Combine(directory,"cover.png")),48))
+                && !ReferenceEquals(fixture,ViewModel.Tracks.Last()) && !ViewModel.IsUpdatingImageCompatibility, "兼容模式未重建图片和模板绑定");
+            using (var restored = new PlayerViewModel(new BilibiliClient(new StartupMetadataHandler())))
+                Check(restored.ImageCompatibilityMode, "重新创建配置后丢失兼容模式设置");
+            ImageCompatibilitySwitch.IsOn = false;
+            await ViewModel.ImageCompatibilityUpdate;
+            Check(ArtworkFormats.UseWebp == systemWebp, "关闭兼容模式后没有遵循实际解码能力");
+            ImageCompatibilitySwitch.IsOn = compatibility;
+            await ViewModel.ImageCompatibilityUpdate;
+            File.Delete(keep); ViewModel.Tracks.Clear();
             Check(RecordHistorySwitch.Header as string=="记录历史"&&ViewModel.AppVersion==AboutVersion.Text&&Version.TryParse(AboutVersion.Text,out _),"关于信息版本或记录历史文案不正确");
             Check(AuthorGitHubLink.NavigateUri.AbsoluteUri=="https://github.com/soda-rx"&&ProjectGitHubLink.NavigateUri.AbsoluteUri=="https://github.com/soda-rx/Bili_Play","关于中的 GitHub 链接不正确");
             Check(ViewAgreementButton.Content as string=="查看用户协议与隐私政策"&&AgreementBody().Content is TextBlock agreement&&agreement.Text==BiliPlay.Services.UserAgreement.Text,"关于下面没有完整协议查看入口");
@@ -117,6 +196,16 @@ public sealed partial class MainPage
                 SettingsScroller.ChangeView(null,0,null,true);await Task.Delay(650);UpdateLayout();
                 var card=AboutCard.TransformToVisual(SettingsLayout).TransformPoint(new(0,0));
                 var options=SettingsOptions.TransformToVisual(SettingsLayout).TransformPoint(new(0,0));
+                foreach (var category in SettingsOptions.Children.OfType<StackPanel>())
+                {
+                    var heading = category.Children.OfType<TextBlock>().First();
+                    var left = heading.TransformToVisual(SettingsLayout).TransformPoint(new(0,0)).X;
+                    Check(Math.Abs(left-options.X)<1, "设置分类标题未左对齐");
+                    foreach (var element in category.Children.OfType<FrameworkElement>())
+                        Check(Math.Abs(element.TransformToVisual(SettingsLayout).TransformPoint(new(0,0)).X-left)<1, "设置控件未与分类标题左对齐");
+                }
+                foreach (var control in new Control[]{AppThemeBox,CloseBehaviorBox,RecordHistorySwitch,RecordSearchHistorySwitch,SingleClickBehaviorBox,DoubleClickBehaviorBox,ClearImageCacheButton,ImageCompatibilitySwitch})
+                    Check(control.HorizontalAlignment == HorizontalAlignment.Left, "设置控件仍然居中或拉伸");
                 if(width==1280)
                 {
                     Check(Grid.GetColumn(AboutPanel)==1&&Grid.GetRow(AboutPanel)==0&&card.X>=options.X+SettingsOptions.ActualWidth+24,"关于没有显示在设置内容右侧");

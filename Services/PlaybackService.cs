@@ -221,7 +221,7 @@ internal sealed class PlaybackEngine : IDisposable
         var updater = _controls.DisplayUpdater; updater.Type = MediaPlaybackType.Music;
         updater.MusicProperties.Title = track?.Title ?? "Bili Play";
         updater.MusicProperties.Artist = track?.Uploader ?? "";
-        updater.Thumbnail = track is not null && Uri.TryCreate(track.Cover, UriKind.Absolute, out var cover) ? RandomAccessStreamReference.CreateFromUri(cover) : null;
+        updater.Thumbnail = MediaThumbnail(track);
         updater.Update(); _controls.PlaybackStatus = MediaPlaybackStatus.Paused;
     }
     public async Task PlayAsync(Track track, double startPosition = 0)
@@ -241,19 +241,21 @@ internal sealed class PlaybackEngine : IDisposable
         {
             var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(track.LocalFile);
             token.ThrowIfCancellationRequested();
-            _player.Pause(); _player.Source = null; _item?.Source.Dispose(); _stream = null; _proxy.Clear();
+            _proxy.Clear(); _player.Pause(); _player.Source = null; _item?.Source.Dispose(); _stream = null;
             _item = new(MediaSource.CreateFromStorageFile(file)); _player.Source = _item;
         }
         var updater = _controls.DisplayUpdater;
         updater.Type = MediaPlaybackType.Music;
         updater.MusicProperties.Title = track.Title;
         updater.MusicProperties.Artist = track.Uploader;
-        if (Uri.TryCreate(track.Cover, UriKind.Absolute, out var cover)) updater.Thumbnail = RandomAccessStreamReference.CreateFromUri(cover);
-        else updater.Thumbnail = null;
+        updater.Thumbnail = MediaThumbnail(track);
         updater.Update();
         if (_pauseRequested) _player.Pause(); else _player.Play();
         Changed?.Invoke();
     }
+    private static RandomAccessStreamReference? MediaThumbnail(Track? track) =>
+        track is not null && Uri.TryCreate(Text.CoverImage(track.Cover, 256), UriKind.Absolute, out var cover)
+            ? RandomAccessStreamReference.CreateFromUri(Text.CompatibleImageUri(cover)) : null;
     private async Task RetryPageAsync()
     {
         if (Current is not { LocalFile.Length: 0 } track || _pageRetried || _load is null)
@@ -294,8 +296,8 @@ internal sealed class PlaybackEngine : IDisposable
     public void Stop()
     {
         CancelQualitySwitch();
-        _load?.Cancel(); _player.Pause(); _player.Source = null;
-        _item?.Source.Dispose(); _item = null; _stream = null; _availableStream = null; Current = null; _proxy.Clear();
+        _load?.Cancel(); _proxy.Clear(); _player.Pause(); _player.Source = null;
+        _item?.Source.Dispose(); _item = null; _stream = null; _availableStream = null; Current = null;
         PrepareSystemSession(null); Changed?.Invoke();
     }
     public void Dispose()

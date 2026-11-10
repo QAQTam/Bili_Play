@@ -39,8 +39,9 @@ internal sealed class AudioPlayback : IDisposable
     }
     public void SetSource(AudioStream stream)
     {
+        var uri = Proxy.SetSource(stream);
         Player.Pause(); Player.Source = null; Item?.Source.Dispose(); Item = null;
-        Item = new(MediaSource.CreateFromUri(Proxy.SetSource(stream))); Player.Source = Item;
+        Item = new(MediaSource.CreateFromUri(uri)); Player.Source = Item;
     }
     private async Task WaitAsync(Task signal, CancellationToken token)
     {
@@ -101,8 +102,10 @@ internal sealed class AudioPlayback : IDisposable
     }
     public void Dispose()
     {
+        if (_disposed) return;
         _disposed = true;
+        Proxy.Dispose();
         Player.Pause(); Player.Source = null; Item?.Source.Dispose(); Item = null;
-        Player.Dispose(); Proxy.Dispose();
+        Player.Dispose();
     }
 }

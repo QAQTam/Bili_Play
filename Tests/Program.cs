@@ -284,6 +284,44 @@ tests.Add(("Loopback audio relay forwards ranges, headers and invalidates tokens
  True((await response.Content.ReadAsByteArrayAsync()).SequenceEqual(new byte[] {2,3,4,5}));
  proxy.SetSource(source); Equal(HttpStatusCode.NotFound,(await http.GetAsync(url)).StatusCode);
 }));
+tests.Add(("Audio relay remains responsive when its creating UI context cannot pump", async () =>
+{
+ var context = new SuspendedContext(); var previous = SynchronizationContext.Current;
+ AudioProxy proxy;
+ SynchronizationContext.SetSynchronizationContext(context);
+ try { proxy = new AudioProxy(new Handler(_ => new(HttpStatusCode.OK) { Content = new ByteArrayContent([1,2,3,4]) })); }
+ finally { SynchronizationContext.SetSynchronizationContext(previous); }
+ using (proxy)
+ using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) })
+ {
+  var url = proxy.SetSource(new(new("https://upos.bilivideo.com/audio.m4s"),"audio/mp4",[]));
+  True((await http.GetByteArrayAsync(url)).SequenceEqual(new byte[] {1,2,3,4}));
+  Equal(0, context.Posts);
+ }
+}));
+tests.Add(("Changing songs cancels the old upstream before opening the replacement", async () =>
+{
+ var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+ var canceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+ using var proxy = new AudioProxy(new CancellableHandler(async (request, token) =>
+ {
+  if (request.RequestUri!.AbsolutePath == "/slow.m4s")
+  {
+   entered.TrySetResult();
+   try { await Task.Delay(Timeout.Infinite, token); }
+   finally { if (token.IsCancellationRequested) canceled.TrySetResult(); }
+  }
+  return new(HttpStatusCode.OK) { Content = new ByteArrayContent([4,3,2,1]) };
+ }));
+ using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+ var old = http.GetByteArrayAsync(proxy.SetSource(new(new("https://upos.bilivideo.com/slow.m4s"),"audio/mp4",[])));
+ await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+ var replacement = proxy.SetSource(new(new("https://upos.bilivideo.com/next.m4s"),"audio/mp4",[]));
+ await canceled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+ try { await old; throw new Exception("The obsolete stream remained open"); }
+ catch (HttpRequestException) { }
+ True((await http.GetByteArrayAsync(replacement)).SequenceEqual(new byte[] {4,3,2,1}));
+}));
 if(args.Contains("--live")) tests.Add(("Live Bilibili home and QR schema (no account writes)", async () =>
 {
  using var client = new BilibiliClient(); await client.WarmUpAsync(); var code = await client.CreateLoginCodeAsync();
@@ -302,9 +340,51 @@ if (Array.IndexOf(args,"--music-page") is var musicIndex && musicIndex >= 0 && m
 Test("Artwork requests preserve original center and do not stack crop transforms", () =>
 {
  var track = new Track(1, "BV1xx411c7mD", "music", "UP", "https://i0.hdslb.com/bfs/archive/cover.jpg@320w_200h_1c.webp", 10);
- Equal("https://i0.hdslb.com/bfs/archive/cover.jpg@480w.webp", track.CardCover);
- Equal("https://i0.hdslb.com/bfs/archive/cover.jpg@128w.webp", track.Thumbnail);
+ Equal("https://i0.hdslb.com/bfs/archive/cover.jpg@480w.jpg", track.CardCover);
+ Equal("https://i0.hdslb.com/bfs/archive/cover.jpg@128w.jpg", track.Thumbnail);
  True(!track.Artwork.Contains("_1c"));
+ Equal("https://i0.hdslb.com/cover.webp@960w.jpg?test=1", Text.CoverImage("https://i0.hdslb.com/cover.webp@320w.webp?test=1", 960));
+ Equal("file:///C:/fixture/cover.png", Text.CoverImage("file:///C:/fixture/cover.png", 480));
+ Equal("https://example.com/cover.png?test=1", Text.CoverImage("https://example.com/cover.png?test=1", 480));
+});
+
+Test("WebP CDN images use native PNG without changing avatar geometry or unrelated URLs", () =>
+{
+ var inputs = new[] {
+  ("https://i0.hdslb.com/avatar.jpg@320w_320h_1c.webp?test=1", "https://i0.hdslb.com/avatar.jpg@320w_320h_1c.png?test=1"),
+  ("https://i1.hdslb.com/original.webp", "https://i1.hdslb.com/original.webp@.png"),
+  ("https://i1.hdslb.com/original.webp@100w", "https://i1.hdslb.com/original.webp@100w.png"),
+  ("https://i0.hdslb.com/cover.jpg@480w.jpg", "https://i0.hdslb.com/cover.jpg@480w.jpg"),
+  ("https://i0.hdslb.com/original.webp@100w.png", "https://i0.hdslb.com/original.webp@100w.png"),
+  ("https://i0.hdslb.com/avatar.png?test=.webp", "https://i0.hdslb.com/avatar.png?test=.webp"),
+  ("https://hdslb.com.evil.test/avatar.webp", "https://hdslb.com.evil.test/avatar.webp"),
+  ("https://example.com/avatar.webp", "https://example.com/avatar.webp"),
+  ("file:///C:/fixture/cover.webp", "file:///C:/fixture/cover.webp")
+ };
+ foreach (var (input, expected) in inputs)
+ {
+  var normalized = Text.CompatibleImageUri(new Uri(input));
+  Equal(expected, normalized.AbsoluteUri);
+  Equal(normalized, Text.CompatibleImageUri(normalized));
+ }
+});
+Test("Artwork codec policy prefers WebP only when supported and compatibility mode is off", () =>
+{
+ var support = ArtworkFormats.WebpSupported; var compatibility = ArtworkFormats.CompatibilityMode;
+ var webp = new Uri("https://i0.hdslb.com/avatar.jpg@80w.webp");
+ try
+ {
+  foreach (var supported in new[] {false,true})
+  foreach (var forced in new[] {false,true})
+  {
+   ArtworkFormats.Configure(supported,forced);
+   Equal(supported && !forced, ArtworkFormats.UseWebp);
+   var cover = Text.CoverImage("https://i0.hdslb.com/cover.jpg",480);
+   True(cover.EndsWith(supported && !forced ? "@480w.webp" : "@480w.jpg", StringComparison.Ordinal));
+   Equal(supported && !forced ? webp.AbsoluteUri : "https://i0.hdslb.com/avatar.jpg@80w.png", Text.CompatibleImageUri(webp).AbsoluteUri);
+  }
+ }
+ finally { ArtworkFormats.Configure(support,compatibility); }
 });
 tests.Add(("Favorite relation is fetched each time and supports bool and numeric values", async () =>
 {
@@ -934,6 +1014,43 @@ tests.Add(("Artwork cache coalesces, survives restart, clears without touching u
  }
  finally {if(Directory.Exists(folder))Directory.Delete(folder,true);}
 }));
+tests.Add(("WebP cache migration bypasses old bytes and shares the native-format cache entry",async()=>
+{
+ var folder=Path.Combine(Path.GetTempPath(),"biliplay-cache-test-"+Guid.NewGuid().ToString("N"));
+ var legacy=new Uri("https://i0.hdslb.com/avatar.jpg@80w.webp");
+ var native=Text.CompatibleImageUri(legacy);var calls=0;
+ try
+ {
+  Directory.CreateDirectory(folder);
+  var oldKey=Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(legacy.AbsoluteUri)));
+  var oldPath=Path.Combine(folder,oldKey+".img");
+  await File.WriteAllBytesAsync(oldPath,Encoding.ASCII.GetBytes("RIFF0000WEBP"));
+  using var cache=new ImageDiskCache(folder,new Handler(r=>{
+   calls++;Equal(native,r.RequestUri!);True(!r.Headers.Contains("Cookie"));
+   return new(HttpStatusCode.OK){Content=new ByteArrayContent([137,80,78,71,13,10,26,10,0,0,0,0])};
+  }));
+  var path=await cache.GetAsync(legacy);True(path is not null && path!=oldPath);
+  Equal(path,await cache.GetAsync(native));Equal(1,calls);
+  Equal((byte)137,(await File.ReadAllBytesAsync(path!))[0]);
+  Equal("RIFF0000WEBP",await File.ReadAllTextAsync(oldPath));
+ }
+ finally {if(Directory.Exists(folder))Directory.Delete(folder,true);}
+}));
+
+tests.Add(("A disposed profile image cache never recreates its directory",async()=>
+{
+ var folder=Path.Combine(Path.GetTempPath(),"biliplay-cache-test-"+Guid.NewGuid().ToString("N"));
+ var calls=0;
+ try
+ {
+  using var cache=new ImageDiskCache(folder,new Handler(_=>{calls++;return new(HttpStatusCode.OK);}));
+  cache.Dispose();await cache.ClearAsync();
+  True(await cache.GetAsync(new Uri("https://i0.hdslb.com/avatar.png")) is null);
+  True(!Directory.Exists(folder));Equal(0,calls);
+ }
+ finally {if(Directory.Exists(folder))Directory.Delete(folder,true);}
+}));
+
 tests.Add(("Clearing artwork cache prevents in-flight downloads from repopulating it",async()=>
 {
  var folder=Path.Combine(Path.GetTempPath(),"biliplay-cache-test-"+Guid.NewGuid().ToString("N"));var entered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var release=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1077,4 +1194,16 @@ sealed class Handler : HttpMessageHandler
  public Handler(Func<HttpRequestMessage,HttpResponseMessage> send) => _send = r => Task.FromResult(send(r));
  public Handler(Func<HttpRequestMessage,Task<HttpResponseMessage>> send) => _send = send;
  protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken cancellationToken) => _send(request);
+}
+
+sealed class SuspendedContext : SynchronizationContext
+{
+ private int _posts;
+ public int Posts => Volatile.Read(ref _posts);
+ public override void Post(SendOrPostCallback callback, object? state) => Interlocked.Increment(ref _posts);
+}
+
+sealed class CancellableHandler(Func<HttpRequestMessage,CancellationToken,Task<HttpResponseMessage>> send) : HttpMessageHandler
+{
+ protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token) => send(request,token);
 }
