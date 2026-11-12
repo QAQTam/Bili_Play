@@ -7,6 +7,7 @@ namespace BiliPlay;
 public sealed partial class MainWindow
 {
     private int _trayTrimVersion;
+    private bool _trayPaneOpen = true;
 
     // Closing to the tray keeps playback and the ViewModel alive but releases the
     // interface: the realized XAML tree, its decoded bitmaps and the artwork caches
@@ -16,6 +17,7 @@ public sealed partial class MainWindow
     private void EnterTrayUiState()
     {
         if (RootFrame.Content is not MainPage page) return;
+        _trayPaneOpen = page.CaptureNavPaneOpen();
         page.PrepareForTrayDetach();
         RootFrame.Content = new Page();
         ArtworkCache.ReleaseMemory();
@@ -25,7 +27,9 @@ public sealed partial class MainWindow
     private void ExitTrayUiState()
     {
         if (RootFrame.Content is MainPage) return;
-        RootFrame.Content = new MainPage(ViewModel);
+        var restored = new MainPage(ViewModel);
+        RootFrame.Content = restored;
+        restored.RestoreNavPane(_trayPaneOpen);
     }
 
     private void ScheduleTrayGcTrim()

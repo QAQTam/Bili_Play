@@ -59,6 +59,7 @@ public sealed partial class MainPage : Page
 {
     public PlayerViewModel ViewModel { get; }
     private bool _initialized;
+    private bool? _restoreNavPaneOpen;
     private readonly UISettings _uiSettings = new();
 #if VISUAL_CHECKS
     private bool _forceReducedMotion;
@@ -81,11 +82,16 @@ public sealed partial class MainPage : Page
     public MainPage(PlayerViewModel? viewModel)
     {
         ViewModel = viewModel ?? new();
+        // A restored page hosts an already-initialized ViewModel; re-running the
+        // first-run path would bump the artwork format version and abort the cover
+        // loads its own initial binding pass just started, leaving blanks.
+        _initialized = viewModel is not null;
         InitializeComponent();
         InitializeTrackActivation();
         InitializeBrowseMotion();
         InitializeFooterInput();
         Navigation.SelectedItem = HomeNav;
+        if (viewModel is not null) SyncNavigationSelection();
         ViewModel.ConfirmQueueChange = ConfirmQueueChangeAsync;
         ViewModel.RequestDownloadOptions = ChooseDownloadOptionsAsync;
         ViewModel.ConfirmClearHistory = ClearHistoryAsync;
@@ -133,6 +139,8 @@ public sealed partial class MainPage : Page
         ViewModel.AnimateNoticeOut = null;
         FinishBrowseEntrance();
     }
+    public bool CaptureNavPaneOpen() => Navigation.IsPaneOpen;
+    public void RestoreNavPane(bool open) => _restoreNavPaneOpen = open;
     private void OnViewModelPropertyChanging(object? sender, System.ComponentModel.PropertyChangingEventArgs args)
     { if (args.PropertyName == nameof(ViewModel.IsLyricsOpen)) PrepareCoverTransfer(!ViewModel.IsLyricsOpen); }
     private void PlaybackIndicatorLoaded(object sender, RoutedEventArgs e) => ((NowPlayingIndicator)sender).Attach(ViewModel);
@@ -202,6 +210,8 @@ public sealed partial class MainPage : Page
                 FallbackIconSource = new SymbolIconSource { Symbol = Symbol.Setting }
             };
         }
+        SyncNavigationSelection();
+        if (_restoreNavPaneOpen is { } paneOpen) { Navigation.IsPaneOpen = paneOpen; _restoreNavPaneOpen = null; }
         if (_initialized) return;
         _initialized = true;
         await ArtworkCache.InitializeAsync(ViewModel.ImageCompatibilityMode);
