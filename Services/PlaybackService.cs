@@ -157,6 +157,7 @@ internal sealed class PlaybackEngine : IDisposable
     public event Action<bool>? PlaybackRequested;
     public event Action<string>? Failed;
     private readonly SystemMediaTransportControls _controls;
+    private long _mediaSession;
 
     public PlaybackEngine(BilibiliClient client, DispatcherQueue dispatcher)
     {
@@ -221,8 +222,10 @@ internal sealed class PlaybackEngine : IDisposable
         var updater = _controls.DisplayUpdater; updater.Type = MediaPlaybackType.Music;
         updater.MusicProperties.Title = track?.Title ?? "Bili Play";
         updater.MusicProperties.Artist = track?.Uploader ?? "";
-        updater.Thumbnail = MediaThumbnail(track);
+        updater.Thumbnail = null;
         updater.Update(); _controls.PlaybackStatus = MediaPlaybackStatus.Paused;
+        var session = ++_mediaSession;
+        if (track is not null) _ = ApplyThumbnailAsync(track, session);
     }
     public async Task PlayAsync(Track track, double startPosition = 0)
     {
@@ -248,14 +251,34 @@ internal sealed class PlaybackEngine : IDisposable
         updater.Type = MediaPlaybackType.Music;
         updater.MusicProperties.Title = track.Title;
         updater.MusicProperties.Artist = track.Uploader;
-        updater.Thumbnail = MediaThumbnail(track);
+        updater.Thumbnail = null;
         updater.Update();
         if (_pauseRequested) _player.Pause(); else _player.Play();
         Changed?.Invoke();
+        var session = ++_mediaSession;
+        _ = ApplyThumbnailAsync(track, session);
     }
-    private static RandomAccessStreamReference? MediaThumbnail(Track? track) =>
-        track is not null && Uri.TryCreate(Text.CoverImage(track.Cover, 256), UriKind.Absolute, out var cover)
-            ? RandomAccessStreamReference.CreateFromUri(Text.CompatibleImageUri(cover)) : null;
+    private async Task ApplyThumbnailAsync(Track track, long session)
+    {
+        var thumbnail = await ResolveThumbnailAsync(track);
+        if (_disposed || session != _mediaSession) return;
+        _controls.DisplayUpdater.Thumbnail = thumbnail;
+        _controls.DisplayUpdater.Update();
+    }
+    private static async Task<RandomAccessStreamReference?> ResolveThumbnailAsync(Track track)
+    {
+        // The media flyout fetches remote URIs in a shell context and fails silently, so hand it
+        // the artwork from the local disk cache and keep the SMTC variant on the plain jpg codec.
+        if (!Uri.TryCreate(Text.CoverImage(track.Cover, 256, webp: false), UriKind.Absolute, out var cover)) return null;
+        try
+        {
+            var resolved = await ArtworkCache.ResolveUriAsync(cover);
+            if (!resolved.IsFile) return RandomAccessStreamReference.CreateFromUri(resolved);
+            var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(resolved.LocalPath);
+            return RandomAccessStreamReference.CreateFromFile(file);
+        }
+        catch (Exception) { return RandomAccessStreamReference.CreateFromUri(cover); }
+    }
     private async Task RetryPageAsync()
     {
         if (Current is not { LocalFile.Length: 0 } track || _pageRetried || _load is null)
