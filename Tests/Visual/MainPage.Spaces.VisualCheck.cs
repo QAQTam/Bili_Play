@@ -87,13 +87,20 @@ public sealed partial class MainPage
                 && SpaceUidText.Text.Length==0, "切换主页加载期间残留了上一用户的会员、等级或 UID");
         }
         finally { ViewModel.SpaceProfile=profile; App.Window.AppWindow.Resize(windowSize); await Task.Delay(100); }
-        var notification = new AccountNotification("私信", "离线私信", "", "", TalkerId:42);
+        var notification = new AccountNotification("私信", "离线私信", "", "", "https://i0.hdslb.com/dm-avatar.jpg", TalkerId:42);
+        ViewModel.Client.RestoreCachedAccount(new(123, "离线布局验证", "https://i0.hdslb.com/self-avatar.jpg"));
         var conversation = ShowConversationAsync(notification, (before, token) => Task.FromResult(new ConversationPage([
             new("one",42,"对话中的 <原文> 不应丢失","",1,"2026-11-09 12:00",false),
             new("two",123,"自己的消息","",2,"2026-11-09 12:01",true)],false,1)));
         await Task.Delay(180);
         var dialog = VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).Select(popup => FindVisual<ContentDialog>(popup.Child)).FirstOrDefault(value=>value is not null);
         Check(dialog is not null && FindVisual<ListView>(dialog!)?.Items.Count == 2, "点击私信未载入对话");
+        var convoList = FindVisual<ListView>(dialog!)!;
+        var other = convoList.ContainerFromIndex(0) as DependencyObject;
+        var own = convoList.ContainerFromIndex(1) as DependencyObject;
+        Check(other is not null && FindVisual<PersonPicture>(other)?.ProfilePicture is not null, "对方消息气泡缺少头像");
+        Check(other is not null && FindVisual<RichTextBlock>(other) is { } rich && rich.Blocks.Count == 1
+        Check(own is not null && FindVisual<PersonPicture>(own)?.ProfilePicture is not null, "自己的消息气泡缺少头像");
         await SaveVisualAsync(Path.Combine(directory, "private-conversation.png"));
         dialog!.Hide(); await conversation;
         Check(!_conversationOpen, "关闭私信后会话没有释放");
