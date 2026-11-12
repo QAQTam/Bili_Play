@@ -61,12 +61,13 @@ public sealed partial class MainWindow : Window
         AppWindow.Closing += (_, e) =>
         {
             if (!_exitRequested && !DebugSession.IsActive && ViewModel.IsLoggedIn && ViewModel.CloseToTray && _tray?.Available == true)
-            { SaveWindowPlacement(); if (ViewModel.CloseBehaviorIndex == 2) ViewModel.PauseForTray(); e.Cancel = true; AppWindow.Hide(); }
+            { SaveWindowPlacement(); if (ViewModel.CloseBehaviorIndex == 2) ViewModel.PauseForTray(); EnterTrayUiState(); e.Cancel = true; AppWindow.Hide(); }
         };
         Closed += (_, _) => { CancelSearchRecommendations(); _suggestionsCache.Clear(); SaveWindowPlacement(); _placementTimer?.Stop(); _tray?.Dispose(); try {ViewModel.Dispose();} finally {ArtworkCache.ResetScope();DebugSession.End();} };
     }
     public void ShowMainWindow()
     {
+        ExitTrayUiState();
         AppWindow.Show();
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
             presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized) presenter.Restore();

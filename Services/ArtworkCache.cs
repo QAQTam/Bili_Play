@@ -79,6 +79,8 @@ public static class ArtworkCache
         catch(Exception e) when(e is System.Runtime.InteropServices.COMException or ArgumentException) { }
     }
     public static void ResetScope() { _formatVersion++; Memory.Clear(); Avatars.Clear(); Sources.Clear(); _clearing=Task.CompletedTask; if(Cache.IsValueCreated)Cache.Value.Dispose(); Cache=NewCache(); }
+    // Tray-mode trim: drop decoded images without touching the disk cache.
+    public static void ReleaseMemory() { _formatVersion++; Memory.Clear(); Avatars.Clear(); Sources.Clear(); }
     public static Task ClearAsync()
     {
         _formatVersion++; Memory.Clear(); Avatars.Clear();

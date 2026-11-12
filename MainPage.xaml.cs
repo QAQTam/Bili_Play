@@ -57,7 +57,7 @@ public sealed class AvatarImageConverter : IValueConverter
 
 public sealed partial class MainPage : Page
 {
-    public PlayerViewModel ViewModel { get; } = new();
+    public PlayerViewModel ViewModel { get; }
     private bool _initialized;
     private readonly UISettings _uiSettings = new();
 #if VISUAL_CHECKS
@@ -77,8 +77,10 @@ public sealed partial class MainPage : Page
     private bool _paneClosing;
     private int _browseTransition;
     private bool _queueRestoreFocus;
-    public MainPage()
+    public MainPage() : this(null) { }
+    public MainPage(PlayerViewModel? viewModel)
     {
+        ViewModel = viewModel ?? new();
         InitializeComponent();
         InitializeTrackActivation();
         InitializeBrowseMotion();
@@ -90,7 +92,7 @@ public sealed partial class MainPage : Page
         ViewModel.AnimateNoticeOut = AnimateNoticeOutAsync;
         Loaded += OnLoaded;
         SizeChanged += (_, _) => { UpdateSidebarGrip(); UpdateFooterActionSpacing(); };
-        ViewModel.PropertyChanging += (_, args) => { if (args.PropertyName == nameof(ViewModel.IsLyricsOpen)) PrepareCoverTransfer(!ViewModel.IsLyricsOpen); };
+        ViewModel.PropertyChanging += OnViewModelPropertyChanging;
         ViewModel.PropertyChanged += OnViewModelChanged;
         ActualThemeChanged += (_, _) => { _ = RefreshAtmosphereAsync(); };
         _resumeLyricsTimer.Tick += (_, _) => ResumeLyricFollowing();
@@ -115,6 +117,24 @@ public sealed partial class MainPage : Page
             else if (ViewModel.IsLyricsOpen) { e.Handled = true; await CloseLyricsAsync(); }
         };
     }
+    // Closing to the tray discards this page and rebuilds it on restore; every
+    // reference from the surviving ViewModel must be released or the whole
+    // realized tree stays rooted and idle memory never drops.
+    public void PrepareForTrayDetach()
+    {
+        ViewModel.PropertyChanging -= OnViewModelPropertyChanging;
+        ViewModel.PropertyChanged -= OnViewModelChanged;
+        ViewModel.BrowseChanged -= QueueBrowseEntrance;
+        ViewModel.BrowseChanged -= SyncNavigationSelection;
+        ViewModel.BrowseChanged -= CancelPendingTrackClick;
+        ViewModel.ConfirmQueueChange = null;
+        ViewModel.RequestDownloadOptions = null;
+        ViewModel.ConfirmClearHistory = null;
+        ViewModel.AnimateNoticeOut = null;
+        FinishBrowseEntrance();
+    }
+    private void OnViewModelPropertyChanging(object? sender, System.ComponentModel.PropertyChangingEventArgs args)
+    { if (args.PropertyName == nameof(ViewModel.IsLyricsOpen)) PrepareCoverTransfer(!ViewModel.IsLyricsOpen); }
     private void PlaybackIndicatorLoaded(object sender, RoutedEventArgs e) => ((NowPlayingIndicator)sender).Attach(ViewModel);
     private void PageHeadingSizeChanged(object sender, SizeChangedEventArgs e) => UpdatePageHeadingWidth();
     private void UpdatePageHeadingWidth() => PageHeadingText.MaxWidth = Math.Max(0, PageHeadingHost.ActualWidth - (ViewModel.IsLocalView ? 40 : 0));
