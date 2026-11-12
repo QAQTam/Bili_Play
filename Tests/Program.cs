@@ -381,6 +381,8 @@ Test("Artwork codec policy prefers WebP only when supported and compatibility mo
    Equal(supported && !forced, ArtworkFormats.UseWebp);
    var cover = Text.CoverImage("https://i0.hdslb.com/cover.jpg",480);
    True(cover.EndsWith(supported && !forced ? "@480w.webp" : "@480w.jpg", StringComparison.Ordinal));
+   // The system media flyout decodes in a shell context, so the SMTC variant always requests jpg.
+   True(Text.CoverImage("https://i0.hdslb.com/cover.jpg",480,false).EndsWith("@480w.jpg", StringComparison.Ordinal));
    Equal(supported && !forced ? webp.AbsoluteUri : "https://i0.hdslb.com/avatar.jpg@80w.png", Text.CompatibleImageUri(webp).AbsoluteUri);
   }
  }

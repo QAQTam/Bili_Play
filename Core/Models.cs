@@ -100,12 +100,12 @@ public static partial class Text
     [GeneratedRegex(@"^BV[0-9A-Za-z]{10}$", RegexOptions.IgnoreCase)]
     private static partial Regex BvidPattern();
 
-    public static string CoverImage(string value, int width)
+    public static string CoverImage(string value, int width, bool webp = true)
     {
         if (string.IsNullOrWhiteSpace(value)) return "";
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || !IsImageCdn(uri)) return value;
         // Let the view crop from the original center, independent of the chosen codec.
-        var format = ArtworkFormats.UseWebp ? "webp" : "jpg";
+        var format = webp && ArtworkFormats.UseWebp ? "webp" : "jpg";
         return new UriBuilder(uri) { Path = uri.AbsolutePath.Split('@')[0] + $"@{width}w.{format}" }.Uri.AbsoluteUri;
     }
     public static Uri CompatibleImageUri(Uri uri)
