@@ -29,6 +29,8 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
         AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        UpdateCaptionButtonColors();
+        WindowRoot.ActualThemeChanged += (_, _) => UpdateCaptionButtonColors();
         SetTitleBar(AppTitleBar);
 
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
@@ -72,6 +74,17 @@ public sealed partial class MainWindow : Window
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
             presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized) presenter.Restore();
         Activate(); SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+    }
+    // The framework infers caption glyph colors from the app theme only on some transitions;
+    // a system theme flip or window deactivation can leave the system buttons un-inverted when
+    // the in-app theme differs from the system theme. Own the foregrounds explicitly instead.
+    private void UpdateCaptionButtonColors()
+    {
+        var glyph = WindowRoot.ActualTheme == ElementTheme.Dark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
+        AppWindow.TitleBar.ButtonForegroundColor = glyph;
+        var inactive = glyph;
+        inactive.A = 0x80;
+        AppWindow.TitleBar.ButtonInactiveForegroundColor = inactive;
     }
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool SetForegroundWindow(nint window);
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint window);
