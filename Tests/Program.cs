@@ -1139,6 +1139,15 @@ tests.Add(("Notification errors preserve other feeds and cancellation does not l
  client.RestoreCachedAccount(new(123,"合成用户",""));var items=await client.GetNotificationsAsync();Equal(0,items.Count);True(client.NotificationReadWarnings.Contains("点赞"));
  using var cancel=new CancellationTokenSource();cancel.Cancel();await Throws<OperationCanceledException>(()=>client.GetNotificationsAsync(cancel.Token));
 }));
+Test("Rich message keeps prose and turns urls into link runs", () =>
+{
+ var runs = RichMessage.Parse("全新中国英雄>>\n https://www.bilibili.com/video/BV1eHJy6vEsF/?share_source=copy_web \n\n【新入坑的玩家看这里】\n全英雄介绍>>https://space.bilibili.com/147546636/lists/1345217?type=season");
+ Equal(4, runs.Count);
+ True(!runs[0].IsLink); True(runs[0].Text.Contains("全新中国英雄>>"));
+ Equal("https://www.bilibili.com/video/BV1eHJy6vEsF/?share_source=copy_web", runs[1].Url);
+ True(runs[2].Text.Contains("【新入坑的玩家看这里】"));
+ Equal("https://space.bilibili.com/147546636/lists/1345217?type=season", runs[3].Url);
+});
 Test("Folder previews update only changed cover properties without replacing the card",()=>
 {
  var folder=new Folder(71,"收藏夹",3,true,true,Cover:"https://i0.hdslb.com/a.jpg");var changes=new List<string?>();folder.PropertyChanged+=(_,args)=>changes.Add(args.PropertyName);
