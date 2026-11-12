@@ -96,6 +96,7 @@ public sealed partial class MainPage : Page
         _resumeLyricsTimer.Tick += (_, _) => ResumeLyricFollowing();
         Unloaded += (_, _) => { CancelPendingTrackClick(); _resumeLyricsTimer.Stop(); CancelCoverFlight(); _lyricsTransitionWait?.Cancel(); _lyricsTransitionWait=null; _ambientLoad?.Cancel(); };
         ViewModel.BrowseChanged += QueueBrowseEntrance;
+        ViewModel.BrowseChanged += SyncNavigationSelection;
         SeekSlider.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => ViewModel.IsSeeking = true), true);
         SeekSlider.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => CommitSeek()), true);
         SeekSlider.AddHandler(PointerCaptureLostEvent, new PointerEventHandler((_, _) => { if (ViewModel.IsSeeking) CommitSeek(); }), true);
@@ -276,6 +277,13 @@ public sealed partial class MainPage : Page
         if (ViewModel.IsLyricsOpen) { await CloseLyricsAsync(); return; }
         if (!ViewModel.CanGoBack) return;
         ViewModel.NavigateBack();
+        SyncNavigationSelection();
+    }
+    // Sidebar entries exist only for top-level views. Folders drill in from the library
+    // and keep it highlighted; search and spaces clear the selection on every path that
+    // reaches them, so returning to a space no longer differs from opening one.
+    private void SyncNavigationSelection()
+    {
         Navigation.SelectedItem = ViewModel.IsSettingsView ? Navigation.SettingsItem
             : Navigation.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(item => item.Tag as string == (ViewModel.IsFolderView ? "library" : ViewModel.CurrentView));
     }
