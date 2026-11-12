@@ -58,7 +58,6 @@ public sealed partial class MainPage
         Loaded+=(_,_)=>_browseMotionUnloaded=false;
         Unloaded+=(_,_)=>{_browseMotionUnloaded=true;_browseTransition++;FinishBrowseEntrance();};
         BrowseSurface.LayoutUpdated += (_, _) => { if (!_browseMotionUnloaded && IsLoaded) QueueBrowseRows(); };
-        NotificationsScroller.ViewChanged += (_, _) => QueueBrowseRows();
         foreach(var list in new ListViewBase[]{RecommendationGrid,TrackList,PlaylistList,FolderGrid,FolderList,UploaderList,UploaderGrid,DownloadsList,NotificationList})
         {
             list.SizeChanged += (_, _) => list.Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry { Rect = new(0,0,list.ActualWidth,list.ActualHeight) };
