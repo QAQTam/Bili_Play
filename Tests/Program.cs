@@ -1094,7 +1094,12 @@ tests.Add(("Notification feeds parse typed rows, stacked users, actual counts an
   if(url.AbsolutePath.EndsWith("get_sessions"))
   {
    Equal("api.vc.bilibili.com",url.Host);
-   return Json("""{"code":0,"data":{"has_more":0,"session_list":[{"talker_id":7,"talker_info":{"name":"私信用户","pic_url":"https://i0.hdslb.com/dm.jpg"},"session_ts":1730000000000000,"last_msg":{"content":"{\"content\":\"你好\"}"}}]}}""");
+   return Json("""{"code":0,"data":{"has_more":0,"session_list":[{"talker_id":7,"account_info":{"name":"私信用户","pic_url":"https://i0.hdslb.com/dm.jpg"},"session_ts":1730000000000000,"last_msg":{"content":"{\"content\":\"你好\"}"}},{"talker_id":8,"session_ts":1730000000000000,"last_msg":{"content":"{\"content\":\"在吗\"}"}}]}}""");
+  }
+  if(url.AbsolutePath.EndsWith("user/cards"))
+  {
+   Equal("api.bilibili.com",url.Host);Equal("8",query["uids"]);
+   return Json("""{"code":0,"data":{"8":{"mid":"8","name":"补全用户","face":"https://i0.hdslb.com/card.jpg"}}}""");
   }
   if(url.AbsolutePath.EndsWith("/like"))
   {
@@ -1112,11 +1117,20 @@ tests.Add(("Notification feeds parse typed rows, stacked users, actual counts an
   return Json("""{"code":0,"data":{"system_notify_list":[{"id":90,"title":"系统公告","content":"<b>简短通知</b>","time_at":"2024-10-27 12:00:00"}]}}""");
  }));
  client.RestoreCachedAccount(new(123,"离线合成用户",""));
- var items=await client.GetNotificationsAsync();Equal(2,likePages);Equal(1,mentionPages);Equal(5,items.Count);
+ var items=await client.GetNotificationsAsync();Equal(2,likePages);Equal(1,mentionPages);Equal(6,items.Count);
  var like=items.Single(item=>item.Id=="like:71");Equal(37,like.ActorCount);Equal(2,like.Avatars.Count);True(like.HasAvatarTwo);True(!like.HasTargetImage);Equal("评论",like.TargetKind);True(like.Summary.Contains("37 人赞了我的评论"));
  Equal("https://i0.hdslb.com/video.jpg",items.Single(item=>item.Id=="like:72").TargetImage);
- var dm=items.Single(item=>item.Category=="私信");Equal("你好",dm.Content);Equal("私信用户",dm.Title);True(dm.Timestamp>0);
+ var dm=items.Single(item=>item.Category=="私信"&&item.TalkerId==7);Equal("你好",dm.Content);Equal("私信用户",dm.Title);Equal("https://i0.hdslb.com/dm.jpg",dm.AvatarOne);True(dm.Timestamp>0);
+ var stranger=items.Single(item=>item.Id=="session:8");Equal("补全用户",stranger.Title);Equal("https://i0.hdslb.com/card.jpg",stranger.AvatarOne);
  True(items.All(item=>item.Category is "私信" or "回复与@" or "系统通知"));Equal(0,client.NotificationReadWarnings.Count);
+}));
+tests.Add(("Session identity reads live account_info and still accepts legacy talker_info", async () =>
+{
+ using var client=new BilibiliClient(new Handler(request=>Json("""{"code":0,"data":{"has_more":0,"session_list":[{"talker_id":7,"account_info":{"name":"现网用户","pic_url":"https://i0.hdslb.com/live.jpg"},"session_ts":1730000000000000,"last_msg":{"content":"{\"content\":\"你好\"}"}},{"talker_id":8,"talker_info":{"name":"旧形态用户","pic_url":"https://i0.hdslb.com/legacy.jpg"},"session_ts":1730000000000000,"last_msg":{"content":"{\"content\":\"在\"}"}}]}}""")));
+ client.RestoreCachedAccount(new(123,"离线合成用户",""));
+ var items=await client.GetNotificationsAsync();
+ Equal("现网用户",items.Single(i=>i.TalkerId==7).Title);Equal("https://i0.hdslb.com/live.jpg",items.Single(i=>i.TalkerId==7).AvatarOne);
+ Equal("旧形态用户",items.Single(i=>i.TalkerId==8).Title);Equal("https://i0.hdslb.com/legacy.jpg",items.Single(i=>i.TalkerId==8).AvatarOne);
 }));
 tests.Add(("Notification errors preserve other feeds and cancellation does not look like an empty inbox",async()=>
 {

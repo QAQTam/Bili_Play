@@ -47,6 +47,22 @@ public sealed partial class BilibiliClient
         return new(items, items.Length > 0 && (total > 0 ? (long)page * 30 < total : items.Length == 30));
     }
 
+    public async Task<IReadOnlyDictionary<long, (string Name, string Face)>> GetUserCardsAsync(IReadOnlyCollection<long> uids, CancellationToken ct = default)
+    {
+        RequireAccount();
+        var cards = new Dictionary<long, (string Name, string Face)>();
+        if (uids.Count == 0) return cards;
+        var data = await GetAsync("x/polymer/pc-electron/v1/user/cards", new() { ["uids"] = string.Join(",", uids), ["build"] = "0", ["mobi_app"] = "web" }, false, ct);
+        foreach (var entry in data.EnumerateObject())
+            if (entry.Value.ValueKind == JsonValueKind.Object && long.TryParse(entry.Name, out var uid))
+            {
+                var name = Text.Clean(entry.Value.S("name"));
+                var face = ImageUrl(entry.Value.S("face"));
+                if (name.Length > 0 || face.Length > 0) cards[uid] = (name, face);
+            }
+        return cards;
+    }
+
     public async Task<ConversationPage> GetConversationAsync(long talker, long before = 0, CancellationToken ct = default)
     {
         RequireAccount();
