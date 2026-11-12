@@ -80,6 +80,7 @@ public sealed partial class MainPage
                 ViewModel.IsLyricsOpen = true; await _lyricsMotionTask; await Task.Delay(700); UpdateLayout();
                 Check(_ambientReady && _ambientPalette!=ArtworkAtmosphere.Neutral,"封面配色背景未生成");
                 ((MainWindow)App.Window).VerifyGlobalBackdrop(true);
+                ((MainWindow)App.Window).VerifyTitleBarHeaderSpacing();
                 Check(Navigation.Visibility == Visibility.Collapsed, "透明歌词背景泄露下层列表");
                 Check(PlayerBar.Background is SolidColorBrush playerSurface && playerSurface.Color.A < 32, "播放栏遮挡全局背景");
                 Check(PlayerBar.Visibility == Visibility.Visible && PlayerBar.ActualHeight > 0,"详情打开时底栏消失");
