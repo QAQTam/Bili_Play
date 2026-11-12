@@ -7,7 +7,7 @@ public sealed record UserSpace(long Id, string Name, string Avatar, int Level, b
     public string VipText => !IsVip ? "非大会员" : VipType == 2 ? "年度大会员" : "大会员";
     public string UidText => $"UID {Id}";
 }
-public sealed record DirectMessage(string Id, long Sender, string Text, string Image, long Sequence, string Time, bool IsOwn)
+public sealed record DirectMessage(string Id, long Sender, string Text, string Image, long Sequence, string Time, bool IsOwn, string SenderAvatar = "")
 {
     public string SenderLabel => IsOwn ? "我" : "对方";
 }
