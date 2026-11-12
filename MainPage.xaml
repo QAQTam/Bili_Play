@@ -8,7 +8,7 @@
   <CornerRadius x:Key="GridViewItemCornerRadius">8</CornerRadius>
   <DataTemplate x:Key="DirectMessageTemplate" x:DataType="core:DirectMessage">
    <Border Padding="12" Margin="0,4" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-    <StackPanel Spacing="6"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{x:Bind SenderLabel}" FontWeight="SemiBold"/><TextBlock Text="{x:Bind Time}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel><TextBlock Text="{x:Bind Text}" TextWrapping="Wrap" IsTextSelectionEnabled="True"/><Image Source="{x:Bind Image, Converter={StaticResource CoverImage}, ConverterParameter=480}" MaxWidth="360" MaxHeight="260" Stretch="Uniform"/></StackPanel>
+    <StackPanel Spacing="6"><StackPanel Orientation="Horizontal" Spacing="12"><PersonPicture Width="28" Height="28" VerticalAlignment="Center" ProfilePicture="{x:Bind SenderAvatar, Converter={StaticResource AvatarImage}, ConverterParameter=64}"/><TextBlock Text="{x:Bind SenderLabel}" FontWeight="SemiBold" VerticalAlignment="Center"/><TextBlock Text="{x:Bind Time}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/></StackPanel><TextBlock Text="{x:Bind Text}" TextWrapping="Wrap" IsTextSelectionEnabled="True"/><Image Source="{x:Bind Image, Converter={StaticResource CoverImage}, ConverterParameter=480}" MaxWidth="360" MaxHeight="260" Stretch="Uniform"/></StackPanel>
    </Border>
   </DataTemplate>
   <local:BoolVisibilityConverter x:Key="VisibleWhen"/>
