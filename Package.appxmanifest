@@ -4,6 +4,7 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap uap10 rescap">
 
@@ -40,7 +41,9 @@
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
-        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+        <!-- BackgroundColor matches the light-theme startup mask (SolidBackgroundFillColorBase);
+             uap5:Optional lets Windows skip the splash entirely once launch is fast enough. -->
+        <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#F3F3F3" uap5:Optional="true" />
       </uap:VisualElements>
     </Application>
   </Applications>
