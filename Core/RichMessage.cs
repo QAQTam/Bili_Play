@@ -7,8 +7,8 @@ public sealed record RichRun(string Text, string Url)
     public bool IsLink => Url.Length > 0;
 }
 
-// Mirrors the official web whisper rich text: plain spans keep line breaks, URLs become
-// inline link chips instead of raw address text. Separators and 【headings】 stay plain.
+// Mirrors the official web whisper rich text: plain spans keep line breaks and URLs become
+// link runs that the view renders as hyperlinks showing the address. Separators and 【headings】 stay plain.
 public static class RichMessage
 {
     private static readonly Regex UrlPattern = new(@"https?://[^\s<>""]+", RegexOptions.Compiled);
