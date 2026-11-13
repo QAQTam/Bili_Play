@@ -10,7 +10,9 @@ public static class ArtworkCache
         ? Path.Combine(App.VisualCheckDirectory!,"data","cache","images")
         : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),AppProfile.DataDirectoryName,"cache","images")));
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<BitmapImage,Uri> Sources = new();
-    private static readonly Dictionary<string,WeakReference<BitmapImage>> Memory = [];
+    private static readonly LinkedList<(string Key, WeakReference<BitmapImage> Ref)> MemoryLru = new();
+    private static readonly Dictionary<string, LinkedListNode<(string Key, WeakReference<BitmapImage> Ref)>> Memory = [];
+    private static void ClearMemory() { Memory.Clear(); MemoryLru.Clear(); }
     private static readonly LinkedList<(string Key, BitmapImage Image)> Avatars = new();
     private static int _formatVersion;
     private static Task _clearing = Task.CompletedTask;
@@ -18,13 +20,13 @@ public static class ArtworkCache
     {
         var supported = await ImageCodecSupport.SupportsWebpAsync();
         ArtworkFormats.Configure(supported, compatibilityMode);
-        Memory.Clear(); Avatars.Clear(); _formatVersion++;
+        ClearMemory(); Avatars.Clear(); _formatVersion++;
     }
     public static void SetCompatibilityMode(bool enabled)
     {
         if(ArtworkFormats.CompatibilityMode==enabled)return;
         ArtworkFormats.Configure(ArtworkFormats.WebpSupported, enabled);
-        Memory.Clear(); Avatars.Clear(); _formatVersion++;
+        ClearMemory(); Avatars.Clear(); _formatVersion++;
     }
     public static Uri? SourceUri(BitmapImage? image) => image is null?null:Sources.TryGetValue(image,out var uri)?uri:image.UriSource;
     public static async Task<Uri> ResolveUriAsync(Uri uri)
@@ -63,9 +65,20 @@ public static class ArtworkCache
     {
         uri=Text.CompatibleImageUri(uri);
         var key=$"{width}:{uri.AbsoluteUri}";
-        if(Memory.TryGetValue(key,out var weak)&&weak.TryGetTarget(out var existing))return existing;
+        if(Memory.TryGetValue(key,out var node))
+        {
+            if(node.Value.Ref.TryGetTarget(out var existing))
+            {
+                MemoryLru.Remove(node);MemoryLru.AddFirst(node);
+                return existing;
+            }
+            MemoryLru.Remove(node);Memory.Remove(key);
+        }
         var image=new BitmapImage { DecodePixelWidth=width };Sources.Add(image,uri);
-        if(Memory.Count>=256)Memory.Clear();Memory[key]=new(image);
+        // LRU eviction keeps recently decoded covers resident instead of wiping the whole
+        // cache at capacity, so scrolling back over recent items reuses a decoded bitmap.
+        Memory[key]=MemoryLru.AddFirst((key,new WeakReference<BitmapImage>(image)));
+        while(Memory.Count>256){var last=MemoryLru.Last!.Value;MemoryLru.RemoveLast();Memory.Remove(last.Key);}
         if(uri.Scheme!="https" || App.IsVisualCheck) image.UriSource=uri;
         else _=LoadAsync(image,uri);
         return image;
@@ -78,12 +91,12 @@ public static class ArtworkCache
         try {image.UriSource=resolved;}
         catch(Exception e) when(e is System.Runtime.InteropServices.COMException or ArgumentException) { }
     }
-    public static void ResetScope() { _formatVersion++; Memory.Clear(); Avatars.Clear(); Sources.Clear(); _clearing=Task.CompletedTask; if(Cache.IsValueCreated)Cache.Value.Dispose(); Cache=NewCache(); }
+    public static void ResetScope() { _formatVersion++; ClearMemory(); Avatars.Clear(); Sources.Clear(); _clearing=Task.CompletedTask; if(Cache.IsValueCreated)Cache.Value.Dispose(); Cache=NewCache(); }
     // Tray-mode trim: drop decoded images without touching the disk cache.
-    public static void ReleaseMemory() { _formatVersion++; Memory.Clear(); Avatars.Clear(); Sources.Clear(); }
+    public static void ReleaseMemory() { _formatVersion++; ClearMemory(); Avatars.Clear(); Sources.Clear(); }
     public static Task ClearAsync()
     {
-        _formatVersion++; Memory.Clear(); Avatars.Clear();
+        _formatVersion++; ClearMemory(); Avatars.Clear();
         return _clearing=ClearAfterAsync(_clearing,Cache.Value);
     }
     private static async Task ClearAfterAsync(Task previous,ImageDiskCache cache)

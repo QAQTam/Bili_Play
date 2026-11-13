@@ -139,4 +139,23 @@ public sealed partial class MainPage
             Check(false, $"{message}: BGRA={string.Join(',', sample)}, size={target.ActualWidth}x{target.ActualHeight}, visible={target.Visibility}");
         }
     }
+
+    // Capacity eviction must drop only the least-recently-used cover, never the whole
+    // cache: wiping everything at 256 made fast scrolling re-decode every cover (blank flashes).
+    private void VerifyArtworkCacheLru(string directory)
+    {
+        Services.ArtworkCache.ResetScope();
+        try
+        {
+            Uri Key(int i) => new Uri(Path.Combine(directory, $"lru-probe-{i}.png"));
+            var hot = Services.ArtworkCache.Create(Key(0), 48);
+            var cold = Services.ArtworkCache.Create(Key(1), 48);
+            for (var i = 2; i <= 255; i++) Services.ArtworkCache.Create(Key(i), 48);
+            Services.ArtworkCache.Create(Key(0), 48);   // touch hot -> most recently used
+            Services.ArtworkCache.Create(Key(256), 48); // overflow evicts the LRU entry (cold), keeps hot
+            Check(ReferenceEquals(hot, Services.ArtworkCache.Create(Key(0), 48)), "满容量淘汰整表清空了最近使用的封面");
+            Check(!ReferenceEquals(cold, Services.ArtworkCache.Create(Key(1), 48)), "LRU 未淘汰最久未用的封面");
+        }
+        finally { Services.ArtworkCache.ResetScope(); }
+    }
 }

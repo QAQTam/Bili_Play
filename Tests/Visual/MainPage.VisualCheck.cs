@@ -30,6 +30,7 @@ public sealed partial class MainPage
             await VerifyLoginLayoutAsync(directory);
             await VerifyDebugModeAsync(directory);
             await VerifyArtworkReplacementAsync(directory);
+            VerifyArtworkCacheLru(directory);
             await ((MainWindow)App.Window).VerifyWindowPlacementAsync();
             ViewModel.Client.RestoreCachedAccount(new(123, "离线布局验证", ""));
             ViewModel.IsLoggedIn = true;
