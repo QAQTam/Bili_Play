@@ -90,7 +90,7 @@ public sealed partial class MainPage
         var notification = new AccountNotification("私信", "离线私信", "", "", "https://i0.hdslb.com/dm-avatar.jpg", TalkerId:42);
         ViewModel.Client.RestoreCachedAccount(new(123, "离线布局验证", "https://i0.hdslb.com/self-avatar.jpg"));
         var conversation = ShowConversationAsync(notification, (before, token) => Task.FromResult(new ConversationPage([
-            new("one",42,"对话中的 <原文> 不应丢失","",1,"2026-11-09 12:00",false),
+            new("one",42,"对话中的 <原文> 不应丢失 https://www.bilibili.com/video/BV1xx411c7mD","",1,"2026-11-09 12:00",false),
             new("two",123,"自己的消息","",2,"2026-11-09 12:01",true)],false,1)));
         await Task.Delay(180);
         var dialog = VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).Select(popup => FindVisual<ContentDialog>(popup.Child)).FirstOrDefault(value=>value is not null);
@@ -100,7 +100,8 @@ public sealed partial class MainPage
         var own = convoList.ContainerFromIndex(1) as DependencyObject;
         Check(other is not null && FindVisual<PersonPicture>(other)?.ProfilePicture is not null, "对方消息气泡缺少头像");
         Check(other is not null && FindVisual<RichTextBlock>(other) is { } rich && rich.Blocks.Count == 1
-        Check(own is not null && FindVisual<PersonPicture>(own)?.ProfilePicture is not null, "自己的消息气泡缺少头像");
+            && rich.Blocks[0] is Microsoft.UI.Xaml.Documents.Paragraph para && para.Inlines.OfType<Microsoft.UI.Xaml.Documents.Hyperlink>().Any(), "私信链接没有渲染为可点击链接");
+        Check(own is not null && FindVisual<PersonPicture>(own)?.ProfilePicture is not null, "自己的消息气泡缺少头像"); Check(convoList.Items[0] is DirectMessage { SenderLabel: "离线私信" } && convoList.Items[1] is DirectMessage { SenderLabel: "我" }, "私信气泡没有显示会话真实用户名");
         await SaveVisualAsync(Path.Combine(directory, "private-conversation.png"));
         dialog!.Hide(); await conversation;
         Check(!_conversationOpen, "关闭私信后会话没有释放");
