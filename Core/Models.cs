@@ -40,8 +40,11 @@ public sealed record Folder(long Id, string Title, int Count, bool Owned, bool I
     public string Detail => $"{_preview?.Count ?? Count} 个视频 · {(Owned ? (_preview?.IsPrivate ?? IsPrivate) ? "私密" : "公开" : "订阅 · 只读")}";
     public bool HasContents => (_preview?.Count ?? Count) > 0;
     public string FrontImage => HasContents ? Thumbnail(_preview?.Cover ?? Cover) : "";
-    public string MiddleImage => Thumbnail(string.IsNullOrEmpty(_preview?.CoverMiddle ?? CoverMiddle) ? _preview?.Cover ?? Cover : _preview?.CoverMiddle ?? CoverMiddle);
-    public string BackImage => Thumbnail(string.IsNullOrEmpty(_preview?.CoverBack ?? CoverBack) ? _preview?.Cover ?? Cover : _preview?.CoverBack ?? CoverBack);
+    // Missing collage layers render as blank card slots (the Border's neutral brush)
+    // instead of repeating the front cover: a folder with fewer than three items must
+    // not show the same cover stacked three times.
+    public string MiddleImage => Thumbnail(_preview?.CoverMiddle ?? CoverMiddle);
+    public string BackImage => Thumbnail(_preview?.CoverBack ?? CoverBack);
     public void RefreshImages()
     {
         foreach (var name in new[] { nameof(FrontImage), nameof(MiddleImage), nameof(BackImage) })
