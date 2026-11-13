@@ -38,6 +38,7 @@ public sealed partial class MainPage
             await VerifyDownloadLabelsAndAboutAsync(directory);
             await VerifyPageEntrancesAsync();
             await VerifySpacesAndConversationsAsync(directory);
+            await VerifyPagedTrackDedupAsync();
             await VerifyBrowseAndNotificationsAsync(directory);
             await VerifyTrackActivationAsync();
             await VerifyStableQueueActivationAsync();
