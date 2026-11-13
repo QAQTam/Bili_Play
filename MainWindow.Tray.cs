@@ -27,8 +27,13 @@ public sealed partial class MainWindow
     private void ExitTrayUiState()
     {
         if (RootFrame.Content is MainPage) return;
-        var restored = new MainPage(ViewModel, _trayPaneOpen);
+        // A second-instance ping can arrive before the first frame ever renders;
+        // that early rebuild is still the first run and must keep first-run
+        // initialization instead of the restore path.
+        var firstRun = !_firstRunShellBuilt;
+        var restored = new MainPage(ViewModel, _trayPaneOpen, firstRun);
         RootFrame.Content = restored;
+        if (firstRun) _firstRunShellBuilt = true;
         // Cover the rebuild behind the startup mask until the restored shell is laid out.
         WireStartupMask(restored);
     }

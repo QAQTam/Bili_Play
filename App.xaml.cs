@@ -24,6 +24,7 @@ public partial class App : Application
         WinRT.Interop.WindowNative.GetWindowHandle(Window);
     public App()
     {
+        Services.StartupTrace.Log("app-ctor-begin");
         UnhandledException += (_, e) =>
         {
             if(Services.DebugSession.IsActive)return;
@@ -32,10 +33,11 @@ public partial class App : Application
             catch (UnauthorizedAccessException) { }
         };
         InitializeComponent();
+        Services.StartupTrace.Log("app-ctor-end");
     }
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
-        if(!IsVisualCheck) Services.DebugSession.CleanAbandoned();
+        Services.StartupTrace.Log("onlaunched-begin");
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         _instance = new(() => DispatcherQueue.TryEnqueue(() =>
         {
@@ -50,5 +52,8 @@ public partial class App : Application
         Window.Closed += (_, _) => { _instance?.Dispose(); _mainWindow = null; };
         Window.Activate();
         if (_activationPending) { _activationPending = false; _mainWindow.ShowMainWindow(); }
+        Services.StartupTrace.Log("window-activated");
+        // The abandoned-session scan is directory IO; keep it off the pre-first-frame path.
+        if (!IsVisualCheck) DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, Services.DebugSession.CleanAbandoned);
     }
 }

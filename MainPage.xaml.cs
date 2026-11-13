@@ -81,16 +81,18 @@ public sealed partial class MainPage : Page
     private int _browseTransition;
     private bool _queueRestoreFocus;
     public MainPage() : this(null) { }
-    public MainPage(PlayerViewModel? viewModel, bool? initialPaneOpen = null)
+    public MainPage(PlayerViewModel? viewModel, bool? initialPaneOpen = null, bool firstRun = false)
     {
         ViewModel = viewModel ?? new();
         // A restored page hosts an already-initialized ViewModel; re-running the
         // first-run path would bump the artwork format version and abort the cover
-        // loads its own initial binding pass just started, leaving blanks.
-        _initialized = viewModel is not null;
+        // loads its own initial binding pass just started, leaving blanks. A first
+        // run that reuses the window's ViewModel (deferred shell build) must still
+        // initialize, hence the explicit firstRun flag.
+        _initialized = viewModel is not null && !firstRun;
         InitializeComponent();
         if (initialPaneOpen is { } paneOpen) Navigation.IsPaneOpen = paneOpen;
-        if (viewModel is not null)
+        if (viewModel is not null && !firstRun)
         {
             // The restore path builds this page while the window is still hidden;
             // realize the NavigationView template (labels included) now so the first

@@ -23,11 +23,13 @@ public sealed partial class MainWindow : Window
     private int _searchSubmissionVersion;
     private MainPage? _shellPage;
     private bool _shellReady;
+    private bool _firstRunShellBuilt;
     private DateTimeOffset _maskShownAt;
     public PlayerViewModel ViewModel { get; private set; } = null!;
     public MainWindow()
     {
         InitializeComponent();
+        StartupTrace.Log("mainwindow-initcomponent");
         Title = AppProfile.DisplayName;
         AppTitleBar.Title = AppProfile.DisplayName;
 
@@ -40,12 +42,14 @@ public sealed partial class MainWindow : Window
 
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
 
-        // Navigate the root frame to the main page on startup.
-        RootFrame.Navigate(typeof(MainPage));
-        var page = (MainPage)RootFrame.Content;
-        ViewModel = page.ViewModel;
-        Bindings.Update();
-        WireStartupMask(page);
+        // The data layer is built before the window is shown because placement
+        // restore reads the settings store; the XAML shell is deferred until the
+        // first frame presents, so the startup mask (and the OS splash above it)
+        // no longer cover shell construction.
+        StartupTrace.Log("viewmodel-begin");
+        ViewModel = new PlayerViewModel();
+        StartupTrace.Log("viewmodel-created");
+        WireStartupMask(null);
         // A light-dismiss Popup captures outside input and can restore focus back into GotFocus,
         // reopening itself after a search. Keep suggestions non-modal and dismiss without eating clicks.
         WindowRoot.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) => DismissHistoryOutside(args.OriginalSource as DependencyObject)), true);
@@ -61,6 +65,7 @@ public sealed partial class MainWindow : Window
         var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary).WorkArea;
         AppWindow.Resize(new((int)Math.Min(1240 * scale, area.Width - 32), (int)Math.Min(820 * scale, area.Height - 32)));
         InitializeWindowPlacement();
+        StartupTrace.Log("placement-restored");
         if (!App.IsVisualCheck) _tray = new(hwnd, ShowMainWindow, () => { _exitRequested = true; Close(); });
         Activated += (_, args) =>
         {
@@ -72,6 +77,9 @@ public sealed partial class MainWindow : Window
             { SaveWindowPlacement(); if (ViewModel.CloseBehaviorIndex == 2) ViewModel.PauseForTray(); EnterTrayUiState(); e.Cancel = true; AppWindow.Hide(); }
         };
         Closed += (_, _) => { CancelSearchRecommendations(); _suggestionsCache.Clear(); SaveWindowPlacement(); _placementTimer?.Stop(); _tray?.Dispose(); try {ViewModel.Dispose();} finally {ArtworkCache.ResetScope();DebugSession.End();} };
+        // Hidden visual-check windows never render; build the shell synchronously there.
+        if (App.IsVisualCheck) BuildShell();
+        else CompositionTarget.Rendering += OnFirstRenderingTick;
     }
     public void ShowMainWindow()
     {
@@ -95,15 +103,36 @@ public sealed partial class MainWindow : Window
         StartupMaskIconScale.ScaleX = StartupMaskIconScale.ScaleY = 1;
         // Re-assigning the source forces a fresh decode now, while the window is
         // still hidden; hidden-phase XAML drops decoded bitmap surfaces, so a
-        // stale source would come back blank on the first visible frames.
-        StartupMaskIcon.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "SplashScreen.scale-400.png")));
+        // stale source would come back blank on the first visible frames. Resolve
+        // through the scale qualifiers so each DPI decodes its matching asset
+        // instead of always loading the 400% image.
+        StartupMaskIcon.Source = new BitmapImage(new Uri("ms-appx:///Assets/SplashScreen.png"));
         StartupMask.Opacity = 1;
+        // The reveal-hold clock keeps running from when the mask first showed; only
+        // a fresh reveal (tray restore, mask previously collapsed) restarts it.
+        if (StartupMask.Visibility != Visibility.Visible || _maskShownAt == default) _maskShownAt = DateTimeOffset.UtcNow;
         StartupMask.Visibility = Visibility.Visible;
-        _maskShownAt = DateTimeOffset.UtcNow;
+    }
+    private void OnFirstRenderingTick(object? sender, object e)
+    {
+        CompositionTarget.Rendering -= OnFirstRenderingTick;
+        if (_shellPage is not null || RootFrame.Content is not null) return; // tray path beat us to it
+        StartupTrace.Log("first-frame");
+        BuildShell();
+        StartupTrace.Log("shell-built");
+    }
+    private void BuildShell()
+    {
+        var page = new MainPage(ViewModel, firstRun: true);
+        RootFrame.Content = page;
+        Bindings.Update();
+        WireStartupMask(page);
+        _firstRunShellBuilt = true;
     }
     private void OnShellReady(object? sender, EventArgs e)
     {
         _shellReady = true;
+        StartupTrace.Log("shell-ready");
         CompositionTarget.Rendering -= OnFirstFrameAfterReady;
         CompositionTarget.Rendering += OnFirstFrameAfterReady;
     }
@@ -126,6 +155,7 @@ public sealed partial class MainWindow : Window
     private void FadeOutStartupMask()
     {
         if (StartupMask.Visibility != Visibility.Visible) return;
+        StartupTrace.Log("mask-fadeout");
         var reveal = new Storyboard();
         var fade = new DoubleAnimation { To = 0, Duration = new Duration(TimeSpan.FromMilliseconds(280)), EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
         Storyboard.SetTarget(fade, StartupMask);
