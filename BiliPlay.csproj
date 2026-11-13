@@ -83,7 +83,7 @@
   </Target>
 
   <PropertyGroup>
-    <PublishReadyToRun>false</PublishReadyToRun>
+    <PublishReadyToRun>true</PublishReadyToRun>
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 </Project>
