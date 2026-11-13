@@ -16,6 +16,14 @@
 
 ---
 
+## Fork 说明
+
+本仓库是 [soda-rx/Bili_Play](https://github.com/soda-rx/Bili_Play) 的 **fork**，由 fork 维护者独立维护与发布。
+
+- 本 fork 的修改、构建与 Release 仅代表 fork 维护者，**不代表上游的更新计划或态度**。
+- 上游的功能规划与问题修复请以 [上游仓库](https://github.com/soda-rx/Bili_Play) 为准；反馈上游问题请优先到上游提 issue。
+- 为便于覆盖升级，本 fork 沿用上游的包身份；安装本 fork 即视为使用独立维护的版本。
+
 ## 系统要求
 
 | 项目 | 要求 |
