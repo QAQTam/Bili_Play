@@ -27,9 +27,10 @@ public sealed partial class MainWindow
     private void ExitTrayUiState()
     {
         if (RootFrame.Content is MainPage) return;
-        var restored = new MainPage(ViewModel);
+        var restored = new MainPage(ViewModel, _trayPaneOpen);
         RootFrame.Content = restored;
-        restored.RestoreNavPane(_trayPaneOpen);
+        // Cover the rebuild behind the startup mask until the restored shell is laid out.
+        WireStartupMask(restored);
     }
 
     private void ScheduleTrayGcTrim()

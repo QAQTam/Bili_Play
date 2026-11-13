@@ -124,5 +124,15 @@
             navigation events and the Loaded lifecycle.
         -->
         <Frame x:Name="RootFrame" Grid.Row="1" Background="Transparent" />
+
+        <!-- Startup mask: themed splash shown until the shell is laid out; hides
+             the cold-start gap and the tray-restore rebuild behind one reveal. -->
+        <Grid x:Name="StartupMask" Grid.Row="0" Grid.RowSpan="2" Background="{ThemeResource AppCanvasBrush}">
+            <Image x:Name="StartupMaskIcon" Source="ms-appx:///Assets/Square44x44Logo.targetsize-256_altform-unplated.png" Width="104" Height="104" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                <Image.RenderTransform>
+                    <CompositeTransform x:Name="StartupMaskIconScale" />
+                </Image.RenderTransform>
+            </Image>
+        </Grid>
     </Grid>
 </Window>

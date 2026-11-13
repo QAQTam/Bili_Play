@@ -6,6 +6,7 @@ using BiliPlay.ViewModels;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Windows.System;
 
 namespace BiliPlay;
@@ -19,6 +20,8 @@ public sealed partial class MainWindow : Window
     private bool _historySuppressed;
     private string? _submittedSearchText;
     private int _searchSubmissionVersion;
+    private MainPage? _shellPage;
+    private bool _shellReady;
     public PlayerViewModel ViewModel { get; private set; } = null!;
     public MainWindow()
     {
@@ -40,6 +43,7 @@ public sealed partial class MainWindow : Window
         var page = (MainPage)RootFrame.Content;
         ViewModel = page.ViewModel;
         Bindings.Update();
+        WireStartupMask(page);
         // A light-dismiss Popup captures outside input and can restore focus back into GotFocus,
         // reopening itself after a search. Keep suggestions non-modal and dismiss without eating clicks.
         WindowRoot.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) => DismissHistoryOutside(args.OriginalSource as DependencyObject)), true);
@@ -74,6 +78,52 @@ public sealed partial class MainWindow : Window
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
             presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized) presenter.Restore();
         Activate(); SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+    }
+
+    // Startup mask: the overlay shows the app icon on the themed canvas and is only
+    // revealed once the shell reports itself laid out AND the window has actually
+    // rendered a frame, so both cold start and the tray-restore rebuild hide their
+    // loading gap behind one clean reveal instead of flashing half-built UI.
+    private void WireStartupMask(MainPage? page)
+    {
+        if (_shellPage is not null) _shellPage.ShellReady -= OnShellReady;
+        _shellPage = page;
+        _shellReady = false;
+        if (page is not null) page.ShellReady += OnShellReady;
+        StartupMaskIconScale.ScaleX = StartupMaskIconScale.ScaleY = 1;
+        StartupMask.Opacity = 1;
+        StartupMask.Visibility = Visibility.Visible;
+    }
+    private void OnShellReady(object? sender, EventArgs e)
+    {
+        _shellReady = true;
+        CompositionTarget.Rendering -= OnFirstFrameAfterReady;
+        CompositionTarget.Rendering += OnFirstFrameAfterReady;
+    }
+    private void OnFirstFrameAfterReady(object? sender, object e)
+    {
+        if (!_shellReady || !AppWindow.IsVisible) return;
+        CompositionTarget.Rendering -= OnFirstFrameAfterReady;
+        var reveal = new Storyboard();
+        var fade = new DoubleAnimation { To = 0, Duration = new Duration(TimeSpan.FromMilliseconds(280)), EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
+        Storyboard.SetTarget(fade, StartupMask);
+        Storyboard.SetTargetProperty(fade, "Opacity");
+        reveal.Children.Add(fade);
+        var zoom = new DoubleAnimation { To = 1.06, Duration = fade.Duration, EasingFunction = fade.EasingFunction };
+        Storyboard.SetTarget(zoom, StartupMaskIconScale);
+        Storyboard.SetTargetProperty(zoom, "ScaleX");
+        var zoomY = new DoubleAnimation { To = 1.06, Duration = fade.Duration, EasingFunction = fade.EasingFunction };
+        Storyboard.SetTarget(zoomY, StartupMaskIconScale);
+        Storyboard.SetTargetProperty(zoomY, "ScaleY");
+        reveal.Children.Add(zoom);
+        reveal.Children.Add(zoomY);
+        reveal.Completed += (_, _) =>
+        {
+            StartupMask.Visibility = Visibility.Collapsed;
+            StartupMask.Opacity = 1;
+            StartupMaskIconScale.ScaleX = StartupMaskIconScale.ScaleY = 1;
+        };
+        reveal.Begin();
     }
     // The framework infers caption glyph colors from the app theme only on some transitions;
     // a system theme flip or window deactivation can leave the system buttons un-inverted when

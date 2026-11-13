@@ -58,8 +58,10 @@ public sealed class AvatarImageConverter : IValueConverter
 public sealed partial class MainPage : Page
 {
     public PlayerViewModel ViewModel { get; }
+    // Raised once the shell (Navigation pane, selection, item chrome) is realized,
+    // whether on first run or on a tray-restore rebuild.
+    public event EventHandler? ShellReady;
     private bool _initialized;
-    private bool? _restoreNavPaneOpen;
     private readonly UISettings _uiSettings = new();
 #if VISUAL_CHECKS
     private bool _forceReducedMotion;
@@ -79,7 +81,7 @@ public sealed partial class MainPage : Page
     private int _browseTransition;
     private bool _queueRestoreFocus;
     public MainPage() : this(null) { }
-    public MainPage(PlayerViewModel? viewModel)
+    public MainPage(PlayerViewModel? viewModel, bool? initialPaneOpen = null)
     {
         ViewModel = viewModel ?? new();
         // A restored page hosts an already-initialized ViewModel; re-running the
@@ -87,6 +89,16 @@ public sealed partial class MainPage : Page
         // loads its own initial binding pass just started, leaving blanks.
         _initialized = viewModel is not null;
         InitializeComponent();
+        if (initialPaneOpen is { } paneOpen) Navigation.IsPaneOpen = paneOpen;
+        if (viewModel is not null)
+        {
+            // The restore path builds this page while the window is still hidden;
+            // realize the NavigationView template (labels included) now so the first
+            // visible frame is a fully laid-out pane instead of icons that fill in
+            // a second later while the cover loads contend for the UI thread.
+            Navigation.ApplyTemplate();
+            Navigation.UpdateLayout();
+        }
         InitializeTrackActivation();
         InitializeBrowseMotion();
         InitializeFooterInput();
@@ -140,7 +152,6 @@ public sealed partial class MainPage : Page
         FinishBrowseEntrance();
     }
     public bool CaptureNavPaneOpen() => Navigation.IsPaneOpen;
-    public void RestoreNavPane(bool open) => _restoreNavPaneOpen = open;
     private void OnViewModelPropertyChanging(object? sender, System.ComponentModel.PropertyChangingEventArgs args)
     { if (args.PropertyName == nameof(ViewModel.IsLyricsOpen)) PrepareCoverTransfer(!ViewModel.IsLyricsOpen); }
     private void PlaybackIndicatorLoaded(object sender, RoutedEventArgs e) => ((NowPlayingIndicator)sender).Attach(ViewModel);
@@ -211,7 +222,8 @@ public sealed partial class MainPage : Page
             };
         }
         SyncNavigationSelection();
-        if (_restoreNavPaneOpen is { } paneOpen) { Navigation.IsPaneOpen = paneOpen; _restoreNavPaneOpen = null; }
+        // Shell is laid out and synchronized; the window may reveal itself now.
+        ShellReady?.Invoke(this, EventArgs.Empty);
         if (_initialized) return;
         _initialized = true;
         await ArtworkCache.InitializeAsync(ViewModel.ImageCompatibilityMode);
