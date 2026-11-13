@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.System;
 
 namespace BiliPlay;
@@ -22,6 +23,7 @@ public sealed partial class MainWindow : Window
     private int _searchSubmissionVersion;
     private MainPage? _shellPage;
     private bool _shellReady;
+    private DateTimeOffset _maskShownAt;
     public PlayerViewModel ViewModel { get; private set; } = null!;
     public MainWindow()
     {
@@ -91,8 +93,13 @@ public sealed partial class MainWindow : Window
         _shellReady = false;
         if (page is not null) page.ShellReady += OnShellReady;
         StartupMaskIconScale.ScaleX = StartupMaskIconScale.ScaleY = 1;
+        // Re-assigning the source forces a fresh decode now, while the window is
+        // still hidden; hidden-phase XAML drops decoded bitmap surfaces, so a
+        // stale source would come back blank on the first visible frames.
+        StartupMaskIcon.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "SplashScreen.scale-400.png")));
         StartupMask.Opacity = 1;
         StartupMask.Visibility = Visibility.Visible;
+        _maskShownAt = DateTimeOffset.UtcNow;
     }
     private void OnShellReady(object? sender, EventArgs e)
     {
@@ -104,6 +111,21 @@ public sealed partial class MainWindow : Window
     {
         if (!_shellReady || !AppWindow.IsVisible) return;
         CompositionTarget.Rendering -= OnFirstFrameAfterReady;
+        // Hold the splash for a beat so it reads as intentional instead of a flash.
+        var remaining = (int)(600 - (DateTimeOffset.UtcNow - _maskShownAt).TotalMilliseconds);
+        if (remaining > 0)
+        {
+            var hold = DispatcherQueue.CreateTimer();
+            hold.Interval = TimeSpan.FromMilliseconds(remaining);
+            hold.IsRepeating = false;
+            hold.Tick += (_, _) => FadeOutStartupMask();
+            hold.Start();
+        }
+        else FadeOutStartupMask();
+    }
+    private void FadeOutStartupMask()
+    {
+        if (StartupMask.Visibility != Visibility.Visible) return;
         var reveal = new Storyboard();
         var fade = new DoubleAnimation { To = 0, Duration = new Duration(TimeSpan.FromMilliseconds(280)), EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
         Storyboard.SetTarget(fade, StartupMask);
