@@ -56,7 +56,7 @@ public sealed partial class MainPage
                 if (!Current()) return;
                 var anchor = reset ? null : messages.FirstOrDefault();
                 var combined = (reset ? page.Items : messages.Concat(page.Items)).DistinctBy(message => message.Id).OrderBy(message => message.Sequence).ToArray();
-                messages.Clear(); foreach (var message in combined) messages.Add(message with { SenderAvatar = message.IsOwn ? account.Avatar : item.AvatarOne });
+                messages.Clear(); foreach (var message in combined) messages.Add(message with { SenderAvatar = message.IsOwn ? account.Avatar : item.AvatarOne, SenderName = message.IsOwn ? account.Name : item.Title });
                 cursor = page.BeforeSequence; more = page.HasMore;
                 status.Text = messages.Count == 0 ? "暂无可读取的对话内容。" : "";
                 if ((anchor ?? messages.LastOrDefault()) is { } focus) list.ScrollIntoView(focus);

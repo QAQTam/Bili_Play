@@ -1200,7 +1200,7 @@ tests.Add(("Private conversations are read-only, ordered, paginated and limited 
   if(query.ContainsKey("begin_seqno")) { Equal("10",query["begin_seqno"]); return Json("""{"code":0,"data":{"has_more":0,"min_seqno":9,"messages":[{"msg_key":"older","msg_seqno":9,"sender_uid":42,"receiver_id":123,"msg_type":2,"content":"{\"url\":\"https://i0.hdslb.com/image.png\"}"}]}}"""); }
   return Json("""{"code":0,"data":{"has_more":1,"min_seqno":10,"messages":[{"msg_key":"own","msg_seqno":11,"sender_uid":123,"receiver_id":42,"msg_type":1,"timestamp":1730000000,"content":"{\"content\":\"<hello>\"}"},{"msg_key":"peer","msg_seqno":10,"sender_uid":42,"receiver_id":123,"msg_type":1,"content":"{\"content\":\"你好\"}"},{"msg_seqno":12,"sender_uid":88,"receiver_id":123,"msg_type":1,"content":"private foreign message"}]}}""");
  }));
- await client.GetAccountAsync(); var first = await client.GetConversationAsync(42); Equal(2,first.Items.Count); True(first.HasMore); Equal("你好",first.Items[0].Text); True(first.Items[1].IsOwn); Equal("<hello>",first.Items[1].Text);
+ await client.GetAccountAsync(); var first = await client.GetConversationAsync(42); Equal(2,first.Items.Count); True(first.HasMore); Equal("你好",first.Items[0].Text); True(first.Items[1].IsOwn); Equal("<hello>",first.Items[1].Text); Equal("对方",first.Items[0].SenderLabel); Equal("我",first.Items[1].SenderLabel); Equal("私信用户",(first.Items[0] with { SenderName="私信用户" }).SenderLabel);
  var older = await client.GetConversationAsync(42,first.BeforeSequence); True(!older.HasMore); Equal("https://i0.hdslb.com/image.png",older.Items.Single().Image); Equal(2,calls);
 }));
 

@@ -7,9 +7,11 @@ public sealed record UserSpace(long Id, string Name, string Avatar, int Level, b
     public string VipText => !IsVip ? "非大会员" : VipType == 2 ? "年度大会员" : "大会员";
     public string UidText => $"UID {Id}";
 }
-public sealed record DirectMessage(string Id, long Sender, string Text, string Image, long Sequence, string Time, bool IsOwn, string SenderAvatar = "")
+public sealed record DirectMessage(string Id, long Sender, string Text, string Image, long Sequence, string Time, bool IsOwn, string SenderAvatar = "", string SenderName = "")
 {
-    public string SenderLabel => IsOwn ? "我" : "对方";
+    // The conversation view fills SenderName from the session identity (the same name the
+    // preview list and dialog title show); keep the generic label only as an unknown-name fallback.
+    public string SenderLabel => IsOwn ? "我" : SenderName.Length > 0 ? SenderName : "对方";
 }
 public sealed record ConversationPage(IReadOnlyList<DirectMessage> Items, bool HasMore, long BeforeSequence);
 
