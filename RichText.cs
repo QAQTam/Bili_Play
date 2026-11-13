@@ -2,13 +2,12 @@ using BiliPlay.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
-using Microsoft.UI.Xaml.Media;
 
 namespace BiliPlay;
 
-// Attached rich-text source for whisper bubbles, mirroring the official web: prose keeps
-// line breaks, URLs render as inline chain-link chips opening in the system browser.
-// RichTextBlock is sealed in WinUI, so the behavior lives in an attached property.
+// Attached rich-text source for whisper bubbles: prose keeps line breaks and URLs render
+// as inline hyperlinks that show the actual address (not a bare link icon) and open in the
+// system browser. RichTextBlock is sealed in WinUI, so the behavior lives in an attached property.
 public static class RichText
 {
     public static readonly DependencyProperty SourceProperty = DependencyProperty.RegisterAttached(
@@ -27,7 +26,7 @@ public static class RichText
             if (run.IsLink)
             {
                 var link = new Hyperlink { NavigateUri = new Uri(run.Url) };
-                link.Inlines.Add(new Run { Text = "", FontFamily = new FontFamily("Segoe MDL2 Assets") });
+                link.Inlines.Add(new Run { Text = run.Url });
                 link.Click += async (linkSender, _) =>
                 {
                     if (linkSender is Hyperlink { NavigateUri: { } uri }) await Windows.System.Launcher.LaunchUriAsync(uri);

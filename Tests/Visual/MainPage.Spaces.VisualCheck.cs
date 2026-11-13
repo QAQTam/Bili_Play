@@ -100,7 +100,7 @@ public sealed partial class MainPage
         var own = convoList.ContainerFromIndex(1) as DependencyObject;
         Check(other is not null && FindVisual<PersonPicture>(other)?.ProfilePicture is not null, "对方消息气泡缺少头像");
         Check(other is not null && FindVisual<RichTextBlock>(other) is { } rich && rich.Blocks.Count == 1
-            && rich.Blocks[0] is Microsoft.UI.Xaml.Documents.Paragraph para && para.Inlines.OfType<Microsoft.UI.Xaml.Documents.Hyperlink>().Any(), "私信链接没有渲染为可点击链接");
+            && rich.Blocks[0] is Microsoft.UI.Xaml.Documents.Paragraph para && para.Inlines.OfType<Microsoft.UI.Xaml.Documents.Hyperlink>().Any(link => link.Inlines.OfType<Microsoft.UI.Xaml.Documents.Run>().Any(run => run.Text.Contains("https://www.bilibili.com/video/BV1xx411c7mD"))), "私信链接没有渲染为显示真实地址的可点击超链接");
         Check(own is not null && FindVisual<PersonPicture>(own)?.ProfilePicture is not null, "自己的消息气泡缺少头像"); Check(convoList.Items[0] is DirectMessage { SenderLabel: "离线私信" } && convoList.Items[1] is DirectMessage { SenderLabel: "我" }, "私信气泡没有显示会话真实用户名");
         await SaveVisualAsync(Path.Combine(directory, "private-conversation.png"));
         dialog!.Hide(); await conversation;
