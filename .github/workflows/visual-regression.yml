@@ -1,0 +1,20 @@
+name: Visual regression
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  visual:
+    runs-on: windows-latest
+    # 观察期：先允许失败，稳定后去掉 continue-on-error 并设为必需检查。
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Full test suite including native WinUI visual regression
+        run: ./tools/Test.ps1 -Visual
