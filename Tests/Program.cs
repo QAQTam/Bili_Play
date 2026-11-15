@@ -1096,7 +1096,12 @@ tests.Add(("Notification feeds parse typed rows, stacked users, actual counts an
   if(url.AbsolutePath.EndsWith("get_sessions"))
   {
    Equal("api.vc.bilibili.com",url.Host);
-   return Json("""{"code":0,"data":{"has_more":0,"session_list":[{"talker_id":7,"talker_info":{"name":"私信用户","pic_url":"https://i0.hdslb.com/dm.jpg"},"session_ts":1730000000000000,"last_msg":{"content":"{\"content\":\"你好\"}"}}]}}""");
+   return Json("""{"code":0,"data":{"has_more":0,"session_list":[{"talker_id":7,"account_info":{"name":"私信用户","pic_url":"https://i0.hdslb.com/dm.jpg"},"session_ts":1730000000000000,"last_msg":{"content":"{\"content\":\"你好\"}"}},{"talker_id":8,"session_ts":1730000000000000,"last_msg":{"content":"{\"content\":\"在吗\"}"}}]}}""");
+  }
+  if(url.AbsolutePath.EndsWith("user/cards"))
+  {
+   Equal("api.bilibili.com",url.Host);Equal("8",query["uids"]);
+   return Json("""{"code":0,"data":{"8":{"mid":"8","name":"补全用户","face":"https://i0.hdslb.com/card.jpg"}}}""");
   }
   if(url.AbsolutePath.EndsWith("/like"))
   {
@@ -1114,11 +1119,20 @@ tests.Add(("Notification feeds parse typed rows, stacked users, actual counts an
   return Json("""{"code":0,"data":{"system_notify_list":[{"id":90,"title":"系统公告","content":"<b>简短通知</b>","time_at":"2024-10-27 12:00:00"}]}}""");
  }));
  client.RestoreCachedAccount(new(123,"离线合成用户",""));
- var items=await client.GetNotificationsAsync();Equal(2,likePages);Equal(1,mentionPages);Equal(5,items.Count);
+ var items=await client.GetNotificationsAsync();Equal(2,likePages);Equal(1,mentionPages);Equal(6,items.Count);
  var like=items.Single(item=>item.Id=="like:71");Equal(37,like.ActorCount);Equal(2,like.Avatars.Count);True(like.HasAvatarTwo);True(!like.HasTargetImage);Equal("评论",like.TargetKind);True(like.Summary.Contains("37 人赞了我的评论"));
  Equal("https://i0.hdslb.com/video.jpg",items.Single(item=>item.Id=="like:72").TargetImage);
- var dm=items.Single(item=>item.Category=="私信");Equal("你好",dm.Content);Equal("私信用户",dm.Title);True(dm.Timestamp>0);
+ var dm=items.Single(item=>item.Category=="私信"&&item.TalkerId==7);Equal("你好",dm.Content);Equal("私信用户",dm.Title);Equal("https://i0.hdslb.com/dm.jpg",dm.AvatarOne);True(dm.Timestamp>0);
+ var stranger=items.Single(item=>item.Id=="session:8");Equal("补全用户",stranger.Title);Equal("https://i0.hdslb.com/card.jpg",stranger.AvatarOne);
  True(items.All(item=>item.Category is "私信" or "回复与@" or "系统通知"));Equal(0,client.NotificationReadWarnings.Count);
+}));
+tests.Add(("Session identity reads live account_info and still accepts legacy talker_info", async () =>
+{
+ using var client=new BilibiliClient(new Handler(request=>Json("""{"code":0,"data":{"has_more":0,"session_list":[{"talker_id":7,"account_info":{"name":"现网用户","pic_url":"https://i0.hdslb.com/live.jpg"},"session_ts":1730000000000000,"last_msg":{"content":"{\"content\":\"你好\"}"}},{"talker_id":8,"talker_info":{"name":"旧形态用户","pic_url":"https://i0.hdslb.com/legacy.jpg"},"session_ts":1730000000000000,"last_msg":{"content":"{\"content\":\"在\"}"}}]}}""")));
+ client.RestoreCachedAccount(new(123,"离线合成用户",""));
+ var items=await client.GetNotificationsAsync();
+ Equal("现网用户",items.Single(i=>i.TalkerId==7).Title);Equal("https://i0.hdslb.com/live.jpg",items.Single(i=>i.TalkerId==7).AvatarOne);
+ Equal("旧形态用户",items.Single(i=>i.TalkerId==8).Title);Equal("https://i0.hdslb.com/legacy.jpg",items.Single(i=>i.TalkerId==8).AvatarOne);
 }));
 tests.Add(("Notification errors preserve other feeds and cancellation does not look like an empty inbox",async()=>
 {
@@ -1127,6 +1141,15 @@ tests.Add(("Notification errors preserve other feeds and cancellation does not l
  client.RestoreCachedAccount(new(123,"合成用户",""));var items=await client.GetNotificationsAsync();Equal(0,items.Count);True(client.NotificationReadWarnings.Contains("点赞"));
  using var cancel=new CancellationTokenSource();cancel.Cancel();await Throws<OperationCanceledException>(()=>client.GetNotificationsAsync(cancel.Token));
 }));
+Test("Rich message keeps prose and turns urls into link runs", () =>
+{
+ var runs = RichMessage.Parse("全新中国英雄>>\n https://www.bilibili.com/video/BV1eHJy6vEsF/?share_source=copy_web \n\n【新入坑的玩家看这里】\n全英雄介绍>>https://space.bilibili.com/147546636/lists/1345217?type=season");
+ Equal(4, runs.Count);
+ True(!runs[0].IsLink); True(runs[0].Text.Contains("全新中国英雄>>"));
+ Equal("https://www.bilibili.com/video/BV1eHJy6vEsF/?share_source=copy_web", runs[1].Url);
+ True(runs[2].Text.Contains("【新入坑的玩家看这里】"));
+ Equal("https://space.bilibili.com/147546636/lists/1345217?type=season", runs[3].Url);
+});
 Test("Folder previews update only changed cover properties without replacing the card",()=>
 {
  var folder=new Folder(71,"收藏夹",3,true,true,Cover:"https://i0.hdslb.com/a.jpg");var changes=new List<string?>();folder.PropertyChanged+=(_,args)=>changes.Add(args.PropertyName);
@@ -1192,7 +1215,7 @@ tests.Add(("Private conversations are read-only, ordered, paginated and limited 
   if(query.ContainsKey("begin_seqno")) { Equal("10",query["begin_seqno"]); return Json("""{"code":0,"data":{"has_more":0,"min_seqno":9,"messages":[{"msg_key":"older","msg_seqno":9,"sender_uid":42,"receiver_id":123,"msg_type":2,"content":"{\"url\":\"https://i0.hdslb.com/image.png\"}"}]}}"""); }
   return Json("""{"code":0,"data":{"has_more":1,"min_seqno":10,"messages":[{"msg_key":"own","msg_seqno":11,"sender_uid":123,"receiver_id":42,"msg_type":1,"timestamp":1730000000,"content":"{\"content\":\"<hello>\"}"},{"msg_key":"peer","msg_seqno":10,"sender_uid":42,"receiver_id":123,"msg_type":1,"content":"{\"content\":\"你好\"}"},{"msg_seqno":12,"sender_uid":88,"receiver_id":123,"msg_type":1,"content":"private foreign message"}]}}""");
  }));
- await client.GetAccountAsync(); var first = await client.GetConversationAsync(42); Equal(2,first.Items.Count); True(first.HasMore); Equal("你好",first.Items[0].Text); True(first.Items[1].IsOwn); Equal("<hello>",first.Items[1].Text);
+ await client.GetAccountAsync(); var first = await client.GetConversationAsync(42); Equal(2,first.Items.Count); True(first.HasMore); Equal("你好",first.Items[0].Text); True(first.Items[1].IsOwn); Equal("<hello>",first.Items[1].Text); Equal("对方",first.Items[0].SenderLabel); Equal("我",first.Items[1].SenderLabel); Equal("私信用户",(first.Items[0] with { SenderName="私信用户" }).SenderLabel);
  var older = await client.GetConversationAsync(42,first.BeforeSequence); True(!older.HasMore); Equal("https://i0.hdslb.com/image.png",older.Items.Single().Image); Equal(2,calls);
 }));
 

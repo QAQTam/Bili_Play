@@ -7,9 +7,11 @@ public sealed record UserSpace(long Id, string Name, string Avatar, int Level, b
     public string VipText => !IsVip ? "非大会员" : VipType == 2 ? "年度大会员" : "大会员";
     public string UidText => $"UID {Id}";
 }
-public sealed record DirectMessage(string Id, long Sender, string Text, string Image, long Sequence, string Time, bool IsOwn)
+public sealed record DirectMessage(string Id, long Sender, string Text, string Image, long Sequence, string Time, bool IsOwn, string SenderAvatar = "", string SenderName = "")
 {
-    public string SenderLabel => IsOwn ? "我" : "对方";
+    // The conversation view fills SenderName from the session identity (the same name the
+    // preview list and dialog title show); keep the generic label only as an unknown-name fallback.
+    public string SenderLabel => IsOwn ? "我" : SenderName.Length > 0 ? SenderName : "对方";
 }
 public sealed record ConversationPage(IReadOnlyList<DirectMessage> Items, bool HasMore, long BeforeSequence);
 
@@ -45,6 +47,22 @@ public sealed partial class BilibiliClient
                 Text.Clean(item.S("author")), ImageUrl(item.S("pic")), Text.ParseDuration(item.S("length")), UploaderId: user)).ToArray();
         var total = data.O("page").N("count");
         return new(items, items.Length > 0 && (total > 0 ? (long)page * 30 < total : items.Length == 30));
+    }
+
+    public async Task<IReadOnlyDictionary<long, (string Name, string Face)>> GetUserCardsAsync(IReadOnlyCollection<long> uids, CancellationToken ct = default)
+    {
+        RequireAccount();
+        var cards = new Dictionary<long, (string Name, string Face)>();
+        if (uids.Count == 0) return cards;
+        var data = await GetAsync("x/polymer/pc-electron/v1/user/cards", new() { ["uids"] = string.Join(",", uids), ["build"] = "0", ["mobi_app"] = "web" }, false, ct);
+        foreach (var entry in data.EnumerateObject())
+            if (entry.Value.ValueKind == JsonValueKind.Object && long.TryParse(entry.Name, out var uid))
+            {
+                var name = Text.Clean(entry.Value.S("name"));
+                var face = ImageUrl(entry.Value.S("face"));
+                if (name.Length > 0 || face.Length > 0) cards[uid] = (name, face);
+            }
+        return cards;
     }
 
     public async Task<ConversationPage> GetConversationAsync(long talker, long before = 0, CancellationToken ct = default)

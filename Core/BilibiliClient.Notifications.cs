@@ -75,11 +75,35 @@ public sealed partial class BilibiliClient
                 if (next.Length == 0 || next == previousCursor) break;
                 previousCursor = next;
             }
+            if (source == "session") await EnrichSessionIdentitiesAsync(items, ct);
             return (items, "");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception error) when (error is BilibiliException or HttpRequestException or JsonException or InvalidDataException or OperationCanceledException)
         { return (items, source switch { "session" => "私信", "system" or "user-system" => "系统通知", "like" => "点赞", "at" => "@", _ => "回复" }); }
+    }
+
+    // get_sessions omits account_info for stranger/unfollowed talkers; the official web
+    // batch-resolves those identities via x/polymer/pc-electron/v1/user/cards. Mirror it.
+    private async Task EnrichSessionIdentitiesAsync(List<AccountNotification> items, CancellationToken ct)
+    {
+        var missing = items.Where(item => item.TalkerId > 0 && (item.Title == "UID " + item.TalkerId || item.AvatarOne.Length == 0))
+            .Select(item => item.TalkerId).Distinct().ToArray();
+        if (missing.Length == 0) return;
+        try
+        {
+            var cards = await GetUserCardsAsync(missing, ct);
+            for (var i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                if (!cards.TryGetValue(item.TalkerId, out var card)) continue;
+                if (item.Title == "UID " + item.TalkerId && card.Name.Length > 0) item = item with { Title = card.Name };
+                if (item.AvatarOne.Length == 0 && card.Face.Length > 0) item = item with { Avatar = card.Face, ActorAvatars = new[] { card.Face } };
+                items[i] = item;
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception error) when (error is BilibiliException or HttpRequestException or JsonException or InvalidDataException) { }
     }
 
     private static IEnumerable<JsonElement> NotificationRows(string source, JsonElement data) => source switch
@@ -97,6 +121,8 @@ public sealed partial class BilibiliClient
         var target = row.O("item");
         var users = row.O("users").A().ToArray();
         if (users.Length == 0 && row.O("user").ValueKind == JsonValueKind.Object) users = [row.O("user")];
+        // Live get_sessions rows carry identity in account_info; talker_info is the legacy shape.
+        if (users.Length == 0 && row.O("account_info").ValueKind == JsonValueKind.Object) users = [row.O("account_info")];
         if (users.Length == 0 && row.O("talker_info").ValueKind == JsonValueKind.Object) users = [row.O("talker_info")];
         var names = users.Select(user => NotificationText(user, "nickname", "uname", "name")).Where(name => name.Length > 0).Take(2).ToArray();
         var avatars = users.Select(user => NotificationImage(NotificationText(user, "avatar", "face", "pic_url")))
