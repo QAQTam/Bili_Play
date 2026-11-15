@@ -25,29 +25,12 @@ public sealed partial class PlayerViewModel
     public string NotificationEmptyText => NotificationsStatus.Length > 0 ? NotificationsStatus : NotificationCategoryIndex switch { 1 => "暂无点赞通知", 2 => "暂无回复与 @", 3 => "暂无系统通知", _ => "暂无私信" };
     public bool HasNotificationStatus => !IsNotificationsLoading && !NotificationsEmpty && NotificationsStatus.Length > 0;
 
-    // Filtered rows are materialized once per data or category change instead of
-    // re-enumerating on every binding read; the list rebinds to a stable instance.
-    private IReadOnlyList<AccountNotification> _visibleNotifications = [];
-    private bool _visibleNotificationsDirty = true;
-    public IEnumerable<AccountNotification> VisibleNotifications
-    {
-        get
-        {
-            if (_visibleNotificationsDirty)
-            {
-                _visibleNotifications = NotificationCategoryIndex switch
-                {
-                    1 => AccountNotifications.Where(item => item.IsLike).ToArray(),
-                    2 => AccountNotifications.Where(item => item.Category == "回复与@" && !item.IsLike).ToArray(),
-                    3 => AccountNotifications.Where(item => item.Category == "系统通知").ToArray(),
-                    _ => AccountNotifications.Where(item => item.Category == "私信").ToArray()
-                };
-                _visibleNotificationsDirty = false;
-            }
-            return _visibleNotifications;
-        }
-    }
-    partial void OnNotificationCategoryIndexChanged(int value) => _visibleNotificationsDirty = true;
+    // Filtered rows are materialized once per data or category change (see Core
+    // NotificationFeed) so rebinding reads a stable snapshot; the dirty flag is
+    // set by category changes and after the feed is repopulated.
+    private readonly NotificationFeed _notificationFeed = new();
+    public IEnumerable<AccountNotification> VisibleNotifications => _notificationFeed.Visible(AccountNotifications, NotificationCategoryIndex);
+    partial void OnNotificationCategoryIndexChanged(int value) => _notificationFeed.Invalidate();
     public bool NotificationsEmpty => !IsNotificationsLoading && !VisibleNotifications.Any();
 
     private CancellationTokenSource? _notificationsLoad;
@@ -69,7 +52,7 @@ public sealed partial class PlayerViewModel
         {
             var items = await Client.GetNotificationsAsync(load.Token);
             if (_disposed || version != _notificationsVersion || !IsNotificationsView) return;
-            _visibleNotificationsDirty = true;
+            _notificationFeed.Invalidate();
             AccountNotifications.Clear();
             foreach (var item in items) AccountNotifications.Add(item);
             _ = BiliPlay.Services.ArtworkCache.WarmAsync(items.SelectMany(item=>item.Avatars.Append(item.TargetImage)), _lifetime.Token);

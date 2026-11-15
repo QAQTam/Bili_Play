@@ -1120,6 +1120,25 @@ tests.Add(("Notification feeds parse typed rows, stacked users, actual counts an
  var dm=items.Single(item=>item.Category=="私信");Equal("你好",dm.Content);Equal("私信用户",dm.Title);True(dm.Timestamp>0);
  True(items.All(item=>item.Category is "私信" or "回复与@" or "系统通知"));Equal(0,client.NotificationReadWarnings.Count);
 }));
+Test("Notification feed filter re-filters per category and materializes stable snapshots", () =>
+{
+ var items=new List<BiliPlay.Core.AccountNotification>
+ {
+  new("私信","甲","", "2026-11-14 09:00", TalkerId: 1),
+  new("回复与@","乙","", "2026-11-14 09:10"),
+  new("系统通知","丙","", "2026-11-14 09:20"),
+  new("回复与@","丁","", "2026-11-14 09:30", IsLike: true),
+ };
+ var feed=new BiliPlay.Core.NotificationFeed();
+ var liked=feed.Visible(items,1);Equal(1,liked.Count);Equal("丁",liked[0].Title);
+ Equal(true,ReferenceEquals(liked,feed.Visible(items,1)));
+ feed.Invalidate();var replies=feed.Visible(items,2);Equal(1,replies.Count);Equal("乙",replies[0].Title);
+ Equal(true,ReferenceEquals(replies,feed.Visible(items,2)));
+ items.Add(new("私信","戊","", "2026-11-14 10:00"));
+ Equal(true,ReferenceEquals(replies,feed.Visible(items,2)));
+ feed.Invalidate();Equal(2,feed.Visible(items,0).Count);
+ feed.Invalidate();Equal("戊",feed.Visible(items,0).Last().Title);
+});
 tests.Add(("Notification errors preserve other feeds and cancellation does not look like an empty inbox",async()=>
 {
  using var client=new BilibiliClient(new Handler(request=>request.RequestUri!.AbsolutePath.EndsWith("/like")
