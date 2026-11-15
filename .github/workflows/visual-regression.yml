@@ -10,11 +10,39 @@ jobs:
   visual:
     runs-on: windows-latest
     # 观察期：先允许失败，稳定后去掉 continue-on-error 并设为必需检查。
+    # 托管 runner 缺少 Media Foundation 音频解码器，原生测试套件无法在此运行；
+    # 这里只发布界面测试版本并运行 --visual-check（不含音频路径）。
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Full test suite including native WinUI visual regression
-        run: ./tools/Test.ps1 -Visual
+      - name: Publish visual check build
+        run: dotnet publish BiliPlay.csproj -c Release -p:Platform=x64 -p:WindowsPackageType=None -p:DevelopmentBuild=true -p:EnableVisualChecks=true -r win-x64 --self-contained false -o artifacts/visual-app
+      - name: Run visual check
+        shell: pwsh
+        run: |
+          $resultDirectory = Join-Path (Get-Location) 'artifacts/visual-check'
+          New-Item -ItemType Directory -Path $resultDirectory -Force | Out-Null
+          $start = [Diagnostics.ProcessStartInfo]::new((Join-Path (Get-Location) 'artifacts/visual-app/Bili_Play.exe'))
+          $start.UseShellExecute = $false
+          $start.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+          $start.ArgumentList.Add('--visual-check')
+          $start.ArgumentList.Add($resultDirectory)
+          $process = [Diagnostics.Process]::Start($start)
+          try {
+            if (-not $process.WaitForExit(120000)) {
+              $process.Kill()
+              $process.WaitForExit(5000) | Out-Null
+              throw '界面测试超时。'
+            }
+            if (-not (Test-Path -LiteralPath (Join-Path $resultDirectory 'result.json'))) { throw '没有界面测试结果。' }
+            $result = Get-Content -LiteralPath (Join-Path $resultDirectory 'result.json') -Raw | ConvertFrom-Json
+            if (-not $result.Success) { throw $result.Error }
+            if ($process.ExitCode -ne 0) { throw "界面测试进程异常退出：$($process.ExitCode)" }
+            Write-Output 'PASS native WinUI visual regression'
+          } finally { $process.Dispose() }
+      - name: Clean generated files
+        if: always()
+        run: ./tools/Clean-Generated.ps1

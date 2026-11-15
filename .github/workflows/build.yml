@@ -21,10 +21,6 @@ jobs:
         run: dotnet restore BiliPlay.csproj --locked-mode -p:Platform=x64
       - name: Build native Windows application
         run: dotnet build BiliPlay.csproj -c Release -p:Platform=x64 --no-restore
-      - name: Windows native application tests
-        run: dotnet run --project Tests/Windows/BiliPlay.Windows.Tests.csproj -c Release
-      - name: Development isolation tests
-        run: dotnet run --project Tests/Windows/BiliPlay.Windows.Tests.csproj -c Release -p:DevelopmentBuild=true
       - name: Clean generated files
         if: always()
         run: .\tools\Clean-Generated.ps1
