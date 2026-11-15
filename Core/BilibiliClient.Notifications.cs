@@ -122,8 +122,18 @@ public sealed partial class BilibiliClient
         var users = row.O("users").A().ToArray();
         if (users.Length == 0 && row.O("user").ValueKind == JsonValueKind.Object) users = [row.O("user")];
         // Live get_sessions rows carry identity in account_info; talker_info is the legacy shape.
-        if (users.Length == 0 && row.O("account_info").ValueKind == JsonValueKind.Object) users = [row.O("account_info")];
-        if (users.Length == 0 && row.O("talker_info").ValueKind == JsonValueKind.Object) users = [row.O("talker_info")];
+        // An account_info object can be present yet nameless (e.g. deactivated accounts), so
+        // identity sources are probed by usable name first and only fall back to their raw
+        // shapes afterwards, which keeps avatar-only account_info rows working.
+        if (users.Length == 0)
+        {
+            var live = row.O("account_info");
+            var legacy = row.O("talker_info");
+            if (live.ValueKind == JsonValueKind.Object && NotificationText(live, "nickname", "uname", "name").Length > 0) users = [live];
+            else if (legacy.ValueKind == JsonValueKind.Object && NotificationText(legacy, "nickname", "uname", "name").Length > 0) users = [legacy];
+            else if (live.ValueKind == JsonValueKind.Object) users = [live];
+            else if (legacy.ValueKind == JsonValueKind.Object) users = [legacy];
+        }
         var names = users.Select(user => NotificationText(user, "nickname", "uname", "name")).Where(name => name.Length > 0).Take(2).ToArray();
         var avatars = users.Select(user => NotificationImage(NotificationText(user, "avatar", "face", "pic_url")))
             .Where(url => url.Length > 0).Take(2).ToArray();
