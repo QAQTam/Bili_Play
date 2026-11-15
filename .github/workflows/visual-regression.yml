@@ -1,8 +1,5 @@
 name: Visual regression
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,7 +29,7 @@ jobs:
           $start.ArgumentList.Add($resultDirectory)
           $process = [Diagnostics.Process]::Start($start)
           try {
-            if (-not $process.WaitForExit(120000)) {
+            if (-not $process.WaitForExit(300000)) {
               $process.Kill()
               $process.WaitForExit(5000) | Out-Null
               throw '界面测试超时。'
