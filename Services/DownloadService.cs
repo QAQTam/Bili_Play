@@ -15,7 +15,7 @@ public sealed class DownloadService(Func<AudioProxy>? createProxy = null)
         if (string.IsNullOrEmpty(track.LocalFile)) return false;
         return string.Equals(Path.GetExtension(track.LocalFile), ".mp3", StringComparison.OrdinalIgnoreCase) && File.Exists(track.LocalFile);
     }
-    public async Task<Track> DownloadAsync(BilibiliClient client, long account, Track track, IProgress<double>? progress, CancellationToken ct, string? destinationDirectory = null, Action<Track>? committed = null, DownloadOptions? options = null)
+    public async Task<Track> DownloadAsync(BilibiliClient client, long account, Track track, IProgress<double>? progress, CancellationToken ct, string? destinationDirectory = null, Action<Track>? committed = null, DownloadOptions? options = null, bool? preferHiRes = null)
     {
         ct.ThrowIfCancellationRequested();
         if (track.Cid == 0) track = (await client.GetVideoAsync(track.Bvid, track.Aid, ct)).Parts.FirstOrDefault(t => t.Page == track.Page)
@@ -30,7 +30,7 @@ public sealed class DownloadService(Func<AudioProxy>? createProxy = null)
         try
         {
             var audio = options?.Source ?? await client.GetAudioAsync(track, ct);
-            if (options is null) audio = audio.Fallback ?? audio;
+            if (options is null) audio = AudioQualityPreference.Choose(audio, preferHiRes == true, client.Account?.IsVip == true);
             if (audio.Quality.StartsWith("Hi-Res", StringComparison.Ordinal) && client.Account?.IsVip != true)
                 throw new InvalidOperationException("Hi-Res 音源需要哔哩哔哩大会员。");
             using var proxy = createProxy?.Invoke() ?? new AudioProxy();
@@ -46,7 +46,8 @@ public sealed class DownloadService(Func<AudioProxy>? createProxy = null)
                 { await output.WriteAsync(buffer.AsMemory(0, read), ct); copied += read; if (total > 0) progress?.Report(70d * copied / total); }
             }
             ct.ThrowIfCancellationRequested();
-            await ConvertToMp3Async(source, staging, new Progress<double>(value => progress?.Report(70 + value * .3)), ct, options?.Bitrate ?? 192000);
+            var bitrate = options?.Bitrate ?? (preferHiRes == true && AudioQualityPreference.IsHiRes(audio.Quality) ? 320000 : 192000);
+            await ConvertToMp3Async(source, staging, new Progress<double>(value => progress?.Report(70 + value * .3)), ct, bitrate);
             ct.ThrowIfCancellationRequested();
             File.Move(staging, target);
             var downloaded = track with { LocalFile = target }; committed?.Invoke(downloaded); return downloaded;

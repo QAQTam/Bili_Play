@@ -105,7 +105,7 @@ public sealed partial class MainPage : Page
                 ViewModel.Seek(SeekSlider.Value);
         };
         TrackList.KeyDown += async (_, e) =>
-        { if (e.Key == VirtualKey.Enter && !ViewModel.IsCacheSelectionMode) { e.Handled = true; CancelPendingTrackClick(); await ViewModel.PlayCommand.ExecuteAsync(ViewModel.SelectedTrack); } };
+        { if (e.Key == VirtualKey.Enter && !ViewModel.IsTrackSelectionMode) { e.Handled = true; CancelPendingTrackClick(); await ViewModel.PlayCommand.ExecuteAsync(ViewModel.SelectedTrack); } };
         KeyDown += async (_, e) =>
         {
             if (e.Key != VirtualKey.Escape) return;
@@ -363,7 +363,7 @@ public sealed partial class MainPage : Page
                 IsEnabled = !hires || ViewModel.IsVip && available.Contains(quality)
             };
             if (!row.IsEnabled) ToolTipService.SetToolTip(row, !ViewModel.IsVip ? "Hi-Res 需要哔哩哔哩大会员" : "此曲目暂未提供 Hi-Res 音源");
-            row.Click += (_, _) => { if (row.IsEnabled) ViewModel.Player.SelectQuality(quality); flyout.Hide(); };
+            row.Click += (_, _) => { if (row.IsEnabled) ViewModel.SelectPlaybackQuality(quality); flyout.Hide(); };
             QualityOptions.Children.Add(row);
         }
     }
@@ -649,7 +649,10 @@ public sealed partial class MainPage : Page
         }
     }
     private void CachedSelectionChanged(object sender, SelectionChangedEventArgs args)
-    { ViewModel.SelectedCacheCount = ViewModel.IsCacheSelectionMode ? TrackList.SelectedItems.Count : 0; }
+    {
+        ViewModel.SelectedCacheCount = ViewModel.IsCacheSelectionMode ? TrackList.SelectedItems.Count : 0;
+        ViewModel.SelectedFolderTrackCount = ViewModel.IsFolderSelectionMode ? TrackList.SelectedItems.Count : 0;
+    }
     private void SelectAllCachedClick(object sender, RoutedEventArgs args) => TrackList.SelectAll();
     private async void DeleteSelectedCachedClick(object sender, RoutedEventArgs args)
     { var selected = TrackList.SelectedItems.OfType<Track>().ToArray(); await ViewModel.RunAsync(() => DeleteCachedWithConfirmationAsync(selected)); }

@@ -6,9 +6,14 @@ using Microsoft.UI.Xaml.Input;
 namespace BiliPlay;
 public sealed partial class MainPage
 {
+    private void LoginVersionDoubleTapped(object sender,DoubleTappedRoutedEventArgs args)
+    {
+#if DEVELOPMENT_BUILD || VISUAL_CHECKS
+        args.Handled=true; _ = ConfirmDebugModeAsync();
+#endif
+    }
+#if DEVELOPMENT_BUILD || VISUAL_CHECKS
     private bool _debugConfirmationOpen;
-    private async void LoginVersionDoubleTapped(object sender,DoubleTappedRoutedEventArgs args)
-    {args.Handled=true;await ConfirmDebugModeAsync();}
     private async Task ConfirmDebugModeAsync()
     {
         if(ViewModel.IsLoggedIn||DebugSession.IsActive||_debugConfirmationOpen)return;
@@ -23,4 +28,5 @@ public sealed partial class MainPage
         }
         finally {_debugConfirmationOpen=false;}
     }
+#endif
 }

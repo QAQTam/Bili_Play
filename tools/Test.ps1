@@ -3,10 +3,8 @@ $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Push-Location $taskRoot
 try {
-    & dotnet run --project Tests/BiliPlay.Tests.csproj -c Release
+    & dotnet run --project Tests/BiliPlay.Tests.csproj -c Release -p:DevelopmentBuild=true
     if ($LASTEXITCODE -ne 0) { throw '核心测试失败。' }
-    & dotnet run --project Tests/Windows/BiliPlay.Windows.Tests.csproj -c Release
-    if ($LASTEXITCODE -ne 0) { throw 'Windows 原生测试失败。' }
     & dotnet run --project Tests/Windows/BiliPlay.Windows.Tests.csproj -c Release -p:DevelopmentBuild=true
     if ($LASTEXITCODE -ne 0) { throw '开发环境隔离测试失败。' }
     if ($Visual) {

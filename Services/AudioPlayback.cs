@@ -9,7 +9,7 @@ internal sealed class AudioPlayback : IDisposable
 {
     public MediaPlayer Player { get; } = new() { AutoPlay = false, AudioCategory = MediaPlayerAudioCategory.Media };
     private double _playbackRate = 1;
-    private bool _disposed;
+    private volatile bool _disposed;
     public double PlaybackRate
     {
         get => _playbackRate;
@@ -99,6 +99,13 @@ internal sealed class AudioPlayback : IDisposable
         live.Player.Volume = 0; live.Player.Pause(); Player.Volume = volume;
         if (playing) Player.Play();
         return playing;
+    }
+    public void Retire()
+    {
+        // Native decoder teardown can wait for callbacks. Never perform it on the UI thread.
+        Player.Volume = 0;
+        Proxy.Clear();
+        _ = Task.Run(() => { try { Dispose(); } catch (Exception) { /* A retired deck cannot affect the active player. */ } });
     }
     public void Dispose()
     {

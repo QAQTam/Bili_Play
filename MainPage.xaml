@@ -8,7 +8,7 @@
   <CornerRadius x:Key="GridViewItemCornerRadius">8</CornerRadius>
   <DataTemplate x:Key="DirectMessageTemplate" x:DataType="core:DirectMessage">
    <Border Padding="12" Margin="0,4" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-    <StackPanel Spacing="6"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{x:Bind SenderLabel}" FontWeight="SemiBold"/><TextBlock Text="{x:Bind Time}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel><TextBlock Text="{x:Bind Text}" TextWrapping="Wrap" IsTextSelectionEnabled="True"/><Image Source="{x:Bind Image, Converter={StaticResource CoverImage}, ConverterParameter=480}" MaxWidth="360" MaxHeight="260" Stretch="Uniform"/></StackPanel>
+    <StackPanel Spacing="6"><StackPanel Orientation="Horizontal" Spacing="12"><PersonPicture Width="28" Height="28" VerticalAlignment="Center" ProfilePicture="{x:Bind SenderAvatar, Converter={StaticResource AvatarImage}, ConverterParameter=64}"/><TextBlock Text="{x:Bind SenderLabel}" FontWeight="SemiBold" VerticalAlignment="Center"/><TextBlock Text="{x:Bind Time}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/></StackPanel><RichTextBlock local:RichText.Source="{x:Bind Text}" TextWrapping="Wrap" IsTextSelectionEnabled="True"/><Image Source="{x:Bind Image, Converter={StaticResource CoverImage}, ConverterParameter=480}" MaxWidth="360" MaxHeight="260" Stretch="Uniform"/></StackPanel>
    </Border>
   </DataTemplate>
   <local:BoolVisibilityConverter x:Key="VisibleWhen"/>
@@ -212,16 +212,19 @@
      <NavigationViewItem Content="通知中心" Tag="notifications" Icon="Message"/>
     </NavigationView.MenuItems>
     <Grid x:Name="BrowseSurface" Margin="8,0,0,0">
-     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
      <Grid Margin="28,24,28,16" ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <Grid x:Name="PageHeadingHost" SizeChanged="PageHeadingSizeChanged"><StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"><TextBlock x:Name="PageHeadingText" Text="{x:Bind ViewModel.PageTitle, Mode=OneWay}" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/><TextBlock Text="本地" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Visibility="{x:Bind ViewModel.IsLocalView, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/></StackPanel></Grid>
-     <CommandBar Grid.Column="1" Margin="0" DefaultLabelPosition="Right" Background="Transparent" IsDynamicOverflowEnabled="False" OverflowButtonVisibility="{x:Bind ViewModel.ToolbarOverflowVisibility, Mode=OneWay}"
+     <CommandBar Grid.Column="1" Margin="0" DefaultLabelPosition="Right" Background="Transparent" IsDynamicOverflowEnabled="True" OverflowButtonVisibility="{x:Bind ViewModel.ToolbarOverflowVisibility, Mode=OneWay}"
        Visibility="{x:Bind ViewModel.IsSettingsView, Mode=OneWay, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}">
       <AppBarButton Icon="OpenLocal" Label="在文件资源管理器中查看" Click="OpenCacheFolderClick" Visibility="{x:Bind ShowWhileNotSelecting(ViewModel.IsCacheView, ViewModel.IsCacheSelectionMode), Mode=OneWay}"/>
       <AppBarToggleButton x:Name="CacheSelectButton" Icon="SelectAll" Label="{x:Bind ViewModel.CacheSelectionLabel, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.CanSelectCachedTracks, Mode=OneWay}" Opacity="{x:Bind ViewModel.CacheSelectionOpacity, Mode=OneWay}" IsChecked="{x:Bind ViewModel.IsCacheSelectionMode, Mode=TwoWay}" Visibility="{x:Bind ViewModel.IsCachedView, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
       <AppBarButton x:Name="SelectAllCachedButton" Icon="SelectAll" Label="全选" IsEnabled="{x:Bind ViewModel.CanSelectCachedTracks, Mode=OneWay}" Click="SelectAllCachedClick" Visibility="{x:Bind ViewModel.IsCacheSelectionMode, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
       <AppBarButton x:Name="DeleteSelectedCachedButton" Icon="Delete" Label="删除所选" Opacity="{x:Bind ViewModel.DeleteSelectedCacheOpacity, Mode=OneWay}" Click="DeleteSelectedCachedClick" IsEnabled="{x:Bind ViewModel.HasSelectedCacheTracks, Mode=OneWay}" Visibility="{x:Bind ViewModel.IsCacheSelectionMode, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
-      <AppBarButton Icon="Play" Label="播放全部" Command="{x:Bind ViewModel.PlayAllCommand}" IsEnabled="{x:Bind ViewModel.HasTracks, Mode=OneWay}" Visibility="{x:Bind ShowWhileNotSelecting(ViewModel.HasTrackContent, ViewModel.IsCacheSelectionMode), Mode=OneWay}"/>
+      <AppBarButton Icon="Play" Label="播放全部" Command="{x:Bind ViewModel.PlayAllCommand}" IsEnabled="{x:Bind ViewModel.HasTracks, Mode=OneWay}" Visibility="{x:Bind ShowWhileNotSelecting(ViewModel.HasTrackContent, ViewModel.IsTrackSelectionMode), Mode=OneWay}"/>
+      <AppBarToggleButton Icon="Download" Label="{x:Bind ViewModel.FolderSelectionLabel, Mode=OneWay}" IsChecked="{x:Bind ViewModel.IsFolderSelectionMode, Mode=TwoWay}" Visibility="{x:Bind ViewModel.IsFolderView, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
+      <AppBarButton Icon="SelectAll" Label="全选已加载" Click="SelectAllFolderTracksClick" Visibility="{x:Bind ViewModel.IsFolderSelectionMode, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
+      <AppBarButton Icon="Download" Label="下载所选" Click="DownloadFolderSelectionClick" IsEnabled="{x:Bind ViewModel.CanDownloadFolderSelection, Mode=OneWay}" Visibility="{x:Bind ViewModel.IsFolderSelectionMode, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
       <AppBarButton Icon="Add" Label="新建" Click="NewFolderClick" Visibility="{x:Bind ViewModel.IsLibraryView, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
       <AppBarButton Icon="Refresh" Label="{x:Bind ViewModel.RefreshLabel, Mode=OneWay}" Command="{x:Bind ViewModel.RefreshCommand}"/>
       <AppBarButton x:Name="ClearQueueButton" Icon="Delete" Label="全部清除" Command="{x:Bind ViewModel.ClearQueueCommand}" Opacity="{x:Bind ViewModel.ClearQueueOpacity, Mode=OneWay}" Visibility="{x:Bind ViewModel.IsPlaylistView, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
@@ -255,7 +258,13 @@
      </Grid>
      <RadioButtons Grid.Row="1" Margin="28,0,28,12" MaxColumns="2" SelectedIndex="{x:Bind ViewModel.SearchCategoryIndex, Mode=TwoWay}" Visibility="{x:Bind ViewModel.IsSearchView, Mode=OneWay, Converter={StaticResource VisibleWhen}}"><x:String>歌曲</x:String><x:String>UP 主</x:String></RadioButtons>
      <RadioButtons Grid.Row="1" Margin="28,0,28,12" MaxColumns="2" SelectedIndex="{x:Bind ViewModel.CacheTabIndex, Mode=TwoWay}" Visibility="{x:Bind ViewModel.IsCacheView, Mode=OneWay, Converter={StaticResource VisibleWhen}}"><x:String>已下载</x:String><x:String>正在下载</x:String></RadioButtons>
-     <Grid Grid.Row="2">
+     <Grid Grid.Row="2" Margin="28,0,28,12" ColumnSpacing="8" Visibility="{x:Bind ViewModel.CanSearchWithinList, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel Spacing="6"><TextBox x:Name="ListSearchBox" Text="{x:Bind ViewModel.ListSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{x:Bind ViewModel.ListSearchPlaceholder, Mode=OneWay}" AutomationProperties.Name="列表内搜索"/>
+       <StackPanel Orientation="Horizontal" Spacing="8"><ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.IsListSearching, Mode=OneWay}" Visibility="{x:Bind ViewModel.IsListSearching, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/><TextBlock Text="{x:Bind ViewModel.ListSearchStatus, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"/></StackPanel>
+      </StackPanel><Button Grid.Column="1" Click="ClearListSearchClick" Content="清空" VerticalAlignment="Top"/>
+     </Grid>
+     <Grid Grid.Row="3">
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <Grid>
        <GridView x:Name="FolderGrid" CanDragItems="True" CanReorderItems="True" AllowDrop="True" DragItemsStarting="FolderDragStarting" DragItemsCompleted="FolderDragCompleted" DragOver="FolderDragOver" Margin="20,0,20,16" ItemsSource="{x:Bind ViewModel.Folders}" IsItemClickEnabled="True" ItemClick="FolderClicked" RightTapped="FolderRightTapped" SelectionMode="None"
@@ -310,7 +319,7 @@
        <GridView x:Name="UploaderGrid" ItemContainerStyle="{StaticResource TileContainer}" Margin="20,0,20,16" ItemsSource="{x:Bind ViewModel.Uploaders}" SelectionMode="None" IsItemClickEnabled="True" ItemClick="UploaderClicked" IncrementalLoadingTrigger="Edge" IncrementalLoadingThreshold="1" DataFetchSize="1" Visibility="{x:Bind ViewModel.IsUploaderGridView, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
         <GridView.ItemTemplate><DataTemplate x:DataType="core:Uploader"><StackPanel Width="200" Padding="12" Spacing="10"><PersonPicture Width="112" Height="112" ProfilePicture="{x:Bind Avatar, Converter={StaticResource AvatarImage}, ConverterParameter=256}"/><TextBlock Text="{x:Bind Name}" TextAlignment="Center" TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}"/><TextBlock Text="{x:Bind Detail}" TextAlignment="Center" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"/></StackPanel></DataTemplate></GridView.ItemTemplate>
        </GridView>
-       <ListView x:Name="PlaylistList" ItemContainerStyle="{StaticResource TrackRowContainer}" Margin="20,0,20,0" ItemsSource="{x:Bind ViewModel.Queue}" SelectionMode="None" IsItemClickEnabled="True" ItemClick="TrackItemClicked" RightTapped="TrackRightTapped" ItemTemplate="{StaticResource PlaylistTrackTemplate}" Visibility="{x:Bind ViewModel.IsPlaylistView, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
+       <ListView x:Name="PlaylistList" ItemContainerStyle="{StaticResource TrackRowContainer}" Margin="20,0,20,0" ItemsSource="{x:Bind ViewModel.PlaylistTracks}" SelectionMode="None" IsItemClickEnabled="True" ItemClick="TrackItemClicked" RightTapped="TrackRightTapped" ItemTemplate="{StaticResource PlaylistTrackTemplate}" Visibility="{x:Bind ViewModel.IsPlaylistView, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
        <ListView x:Name="DownloadsList" ItemContainerStyle="{StaticResource TrackRowContainer}" Margin="20,0,20,16" ItemsSource="{x:Bind ViewModel.Downloads}" SelectionMode="None" Visibility="{x:Bind ViewModel.IsDownloadingView, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
         <ListView.ItemTemplate><DataTemplate x:DataType="vm:DownloadJob">
          <Grid Padding="8,12" ColumnSpacing="12" RowSpacing="8" Tag="{x:Bind}" RightTapped="DownloadRightTapped">
@@ -350,6 +359,17 @@
          <TextBlock HorizontalAlignment="Left" Text="播放" Style="{StaticResource SubtitleTextBlockStyle}" TextAlignment="Left"/>
          <ComboBox HorizontalAlignment="Left" x:Name="SingleClickBehaviorBox" Header="单击曲目" SelectedIndex="{x:Bind ViewModel.SingleClickBehaviorIndex, Mode=TwoWay}" MinWidth="260" HorizontalContentAlignment="Left"><x:String>追加并播放</x:String><x:String>替换并播放</x:String><x:String>每次询问</x:String></ComboBox>
          <ComboBox HorizontalAlignment="Left" x:Name="DoubleClickBehaviorBox" Header="双击曲目" SelectedIndex="{x:Bind ViewModel.DoubleClickBehaviorIndex, Mode=TwoWay}" MinWidth="260" HorizontalContentAlignment="Left"><x:String>追加并播放</x:String><x:String>替换并播放</x:String><x:String>每次询问</x:String></ComboBox>
+         <ToggleSwitch Header="记住音质偏好：优先 Hi-Res" OnContent="开" OffContent="关" IsOn="{x:Bind ViewModel.PreferHiRes, Mode=TwoWay}"/>
+         <TextBlock Text="无 Hi-Res 或账号无权限时播放标准音质，之后遇到可用的 Hi-Res 会自动恢复。" TextWrapping="Wrap" MaxWidth="500"/>
+         </StackPanel>
+         <StackPanel x:Name="HotkeySettings" HorizontalAlignment="Left" Spacing="12">
+          <TextBlock Text="全局快捷键" Style="{StaticResource SubtitleTextBlockStyle}"/>
+          <ToggleSwitch Header="在其他应用中控制播放" OnContent="开" OffContent="关" IsOn="{x:Bind ViewModel.GlobalHotkeysEnabled, Mode=TwoWay}"/>
+          <TextBlock Text="点击输入框后按下新组合；需要 Ctrl 或 Alt。系统媒体键也可使用。" TextWrapping="Wrap" MaxWidth="500"/>
+          <TextBox Header="上一首" Tag="0" IsReadOnly="True" Text="{x:Bind ViewModel.PreviousHotkeyLabel, Mode=OneWay}" KeyDown="HotkeyCaptureKeyDown" GotFocus="HotkeyCaptureGotFocus" LostFocus="HotkeyCaptureLostFocus" MinWidth="280"/>
+          <TextBox Header="下一首" Tag="1" IsReadOnly="True" Text="{x:Bind ViewModel.NextHotkeyLabel, Mode=OneWay}" KeyDown="HotkeyCaptureKeyDown" GotFocus="HotkeyCaptureGotFocus" LostFocus="HotkeyCaptureLostFocus" MinWidth="280"/>
+          <TextBox Header="播放 / 暂停" Tag="2" IsReadOnly="True" Text="{x:Bind ViewModel.ToggleHotkeyLabel, Mode=OneWay}" KeyDown="HotkeyCaptureKeyDown" GotFocus="HotkeyCaptureGotFocus" LostFocus="HotkeyCaptureLostFocus" MinWidth="280"/>
+          <TextBlock Text="{x:Bind ViewModel.HotkeyStatus, Mode=OneWay}" TextWrapping="Wrap" MaxWidth="500"/>
          </StackPanel>
          <StackPanel HorizontalAlignment="Left" x:Name="StorageSettings" Spacing="16">
          <TextBlock HorizontalAlignment="Left" Text="下载与缓存" Style="{StaticResource SubtitleTextBlockStyle}" TextAlignment="Left"/>
@@ -390,14 +410,15 @@
          </StackPanel>
         </Grid>
        </ScrollViewer>
-       <ScrollViewer x:Name="NotificationsScroller" SizeChanged="NotificationViewportSizeChanged" Padding="28,0,28,24" HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled" HorizontalContentAlignment="Stretch" Visibility="{x:Bind ViewModel.IsNotificationsView, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
-        <StackPanel x:Name="NotificationsPanel" Spacing="16" MaxWidth="860" HorizontalAlignment="Left">
-         <RadioButtons x:Name="NotificationCategoryPicker" MaxColumns="4" SelectedIndex="{x:Bind ViewModel.NotificationCategoryIndex, Mode=TwoWay}"><x:String>私信</x:String><x:String>收到的赞</x:String><x:String>回复与@</x:String><x:String>系统通知</x:String></RadioButtons>
-         <StackPanel x:Name="NotificationLoadingRow" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,4,0,0" Visibility="{x:Bind ViewModel.IsNotificationsLoading, Mode=OneWay, Converter={StaticResource VisibleWhen}}"><ProgressRing Width="20" Height="20" IsActive="{x:Bind ViewModel.IsNotificationsLoading, Mode=OneWay}"/><TextBlock Text="正在读取通知…" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
-         <Grid MinHeight="160"><ListView x:Name="NotificationList" ItemContainerStyle="{StaticResource NotificationRowContainer}" ItemsSource="{x:Bind ViewModel.VisibleNotifications, Mode=OneWay}" ItemTemplate="{StaticResource NotificationTemplate}" SelectionMode="None" IsItemClickEnabled="True" ItemClick="NotificationClicked"></ListView><StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" IsHitTestVisible="False" Visibility="{x:Bind ViewModel.NotificationsEmpty, Mode=OneWay, Converter={StaticResource VisibleWhen}}"><FontIcon Glyph="&#xE715;" FontSize="30" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><TextBlock Text="{x:Bind ViewModel.NotificationEmptyText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center"/></StackPanel></Grid>
-         <TextBlock Text="{x:Bind ViewModel.NotificationsStatus, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Visibility="{x:Bind ViewModel.HasNotificationStatus, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
-        </StackPanel>
-       </ScrollViewer>
+       <Grid x:Name="NotificationsScroller" SizeChanged="NotificationViewportSizeChanged" Visibility="{x:Bind ViewModel.IsNotificationsView, Mode=OneWay, Converter={StaticResource VisibleWhen}}">
+        <Grid x:Name="NotificationsPanel" Margin="28,0,28,24" RowSpacing="16" MaxWidth="860" HorizontalAlignment="Left">
+         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+         <RadioButtons Grid.Row="0" x:Name="NotificationCategoryPicker" MaxColumns="4" SelectedIndex="{x:Bind ViewModel.NotificationCategoryIndex, Mode=TwoWay}"><x:String>私信</x:String><x:String>收到的赞</x:String><x:String>回复与@</x:String><x:String>系统通知</x:String></RadioButtons>
+         <StackPanel Grid.Row="1" x:Name="NotificationLoadingRow" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,4,0,0" Visibility="{x:Bind ViewModel.IsNotificationsLoading, Mode=OneWay, Converter={StaticResource VisibleWhen}}"><ProgressRing Width="20" Height="20" IsActive="{x:Bind ViewModel.IsNotificationsLoading, Mode=OneWay}"/><TextBlock Text="正在读取通知…" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
+         <Grid Grid.Row="2" MinHeight="160"><ListView x:Name="NotificationList" Padding="0,0,16,0" ItemContainerStyle="{StaticResource NotificationRowContainer}" ItemsSource="{x:Bind ViewModel.VisibleNotifications, Mode=OneWay}" ItemTemplate="{StaticResource NotificationTemplate}" SelectionMode="None" IsItemClickEnabled="True" ItemClick="NotificationClicked"></ListView><StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" IsHitTestVisible="False" Visibility="{x:Bind ViewModel.NotificationsEmpty, Mode=OneWay, Converter={StaticResource VisibleWhen}}"><FontIcon Glyph="&#xE715;" FontSize="30" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><TextBlock Text="{x:Bind ViewModel.NotificationEmptyText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center"/></StackPanel></Grid>
+         <TextBlock Grid.Row="3" Text="{x:Bind ViewModel.NotificationsStatus, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Visibility="{x:Bind ViewModel.HasNotificationStatus, Mode=OneWay, Converter={StaticResource VisibleWhen}}"/>
+        </Grid>
+       </Grid>
       </Grid>
      </Grid>
      <ProgressBar Grid.Row="2" VerticalAlignment="Top" IsIndeterminate="True" Visibility="{x:Bind ViewModel.ShowPageProgress, Mode=OneWay, Converter={StaticResource VisibleWhen}}" IsHitTestVisible="False"/>

@@ -36,7 +36,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     public IncrementalCollection<Track> Tracks { get; } = [];
     public IncrementalCollection<Uploader> Uploaders { get; } = [];
     public ObservableCollection<string> SearchHistory { get; } = [];
-    public bool HasTracks => IsPlaylistView ? Queue.Count > 0 : Tracks.Count > 0;
+    public bool HasTracks => IsPlaylistView ? PlaylistTracks.Count > 0 : Tracks.Count > 0;
     public bool HasQueue => Queue.Count > 0;
     public bool CanClearHistory => IsHistoryView && HasTracks && !IsEmpty;
     public bool CanClearQueue => HasQueue;
@@ -44,7 +44,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     public double ClearQueueOpacity => CanClearQueue ? 1 : .35;
     public Func<Task>? ConfirmClearHistory { get; set; }
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(TrackSelectionMode), nameof(CanClickTrack), nameof(CacheSelectionLabel), nameof(HasSelectedCacheTracks), nameof(DeleteSelectedCacheOpacity))]
+    [NotifyPropertyChangedFor(nameof(TrackSelectionMode), nameof(CanClickTrack), nameof(IsTrackSelectionMode), nameof(CacheSelectionLabel), nameof(HasSelectedCacheTracks), nameof(DeleteSelectedCacheOpacity))]
     public partial bool IsCacheSelectionMode { get; set; }
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedCacheTracks), nameof(DeleteSelectedCacheOpacity))]
@@ -52,8 +52,8 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     partial void OnIsCacheSelectionModeChanged(bool value) => SelectedCacheCount=0;
     public bool HasSelectedCacheTracks => IsCacheSelectionMode && IsCachedView && SelectedCacheCount > 0;
     public double DeleteSelectedCacheOpacity => HasSelectedCacheTracks ? 1 : .35;
-    public ListViewSelectionMode TrackSelectionMode => IsCacheSelectionMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
-    public bool CanClickTrack => !IsCacheSelectionMode;
+    public ListViewSelectionMode TrackSelectionMode => IsTrackSelectionMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
+    public bool CanClickTrack => !IsTrackSelectionMode;
     public string CacheSelectionLabel => IsCacheSelectionMode ? "取消选择" : "选择";
     private void UpdateClearAvailability()
     {
@@ -153,6 +153,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     public Func<string, Task<QueueChange>>? ConfirmQueueChange { get; set; }
     public Func<Track, Task<DownloadOptions?>>? RequestDownloadOptions { get; set; }
     private int _selectionVersion;
+    private CancellationTokenSource? _selectionLoad, _trackLoad;
     private int _foldersVersion;
     private CancellationTokenSource? _folderPreviews;
 
@@ -253,7 +254,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool IsTracksView { get; set; }
     public bool HasTrackContent => (IsHomeView || IsTracksView) && !IsDownloadingView;
     public string RefreshLabel => IsHomeView ? "换一批" : "刷新";
-    public CommandBarOverflowButtonVisibility ToolbarOverflowVisibility => CommandBarOverflowButtonVisibility.Collapsed;
+    public CommandBarOverflowButtonVisibility ToolbarOverflowVisibility => IsFolderView ? CommandBarOverflowButtonVisibility.Auto : CommandBarOverflowButtonVisibility.Collapsed;
     public bool CanChooseView => IsHomeView || IsLibraryView || IsFolderView || IsSearchView || IsSpaceView;
     public bool CanSelectCachedTracks => IsCachedView && !IsEmpty && Tracks.Count > 0;
     public double CacheSelectionOpacity => CanSelectCachedTracks ? 1 : .35;
@@ -335,10 +336,10 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsHomeGridView), nameof(IsTrackListVisible), nameof(BrowseGridMode), nameof(BrowseListMode), nameof(IsUploaderGridView), nameof(IsUploaderListView))]
     public partial bool SearchGridMode { get; set; }
     partial void OnSearchGridModeChanged(bool value) => Store.SetSetting("searchGrid", value ? "true" : "false");
-    public bool IsHomeGridView => IsHomeView && HomeGridMode || IsFolderView && FolderTracksGridMode || IsSearchView && !IsSearchUploaders && SearchGridMode || IsSpaceView && SpaceGridMode;
+    public bool IsHomeGridView => IsHomeView && HomeGridMode || IsFolderView && FolderTracksGridMode && !IsFolderSelectionMode || IsSearchView && !IsSearchUploaders && SearchGridMode || IsSpaceView && SpaceGridMode;
     public bool IsFolderGridView => IsLibraryView && FolderGridMode;
     public bool IsFolderListView => IsLibraryView && !FolderGridMode;
-    public bool IsTrackListVisible => !IsPlaylistView && !IsDownloadingView && !IsSearchUploaders && (IsTracksView && (!IsFolderView || !FolderTracksGridMode) && (!IsSearchView || !SearchGridMode) && (!IsSpaceView || !SpaceGridMode) || IsHomeView && !HomeGridMode);
+    public bool IsTrackListVisible => !IsPlaylistView && !IsDownloadingView && !IsSearchUploaders && (IsTracksView && (!IsFolderView || !FolderTracksGridMode || IsFolderSelectionMode) && (!IsSearchView || !SearchGridMode) && (!IsSpaceView || !SpaceGridMode) || IsHomeView && !HomeGridMode);
     public bool BrowseGridMode => IsLibraryView ? FolderGridMode : IsFolderView ? FolderTracksGridMode : IsSearchView ? SearchGridMode : IsSpaceView ? SpaceGridMode : HomeGridMode;
     public bool BrowseListMode => !BrowseGridMode;
     partial void OnHomeGridModeChanged(bool value) { Store.SetSetting("homeGrid", value ? "true" : "false"); NotifyBrowseMode(); }
@@ -369,10 +370,12 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         Client = client;
         _readSession = readSession ?? SessionVault.Read;
         PropertyChanged += (_, args) => { if (args.PropertyName is nameof(IsHistoryView) or nameof(IsPlaylistView) or nameof(IsEmpty)) UpdateClearAvailability(); };
-        Tracks.CanLoadMore = () => IsLoggedIn && HasMore && (_view is "home" or "folder" or "space" || _view == "search" && !IsSearchUploaders);
+        Tracks.CanLoadMore = () => ListSearchText.Length == 0 && IsLoggedIn && HasMore && (_view is "home" or "folder" or "space" || _view == "search" && !IsSearchUploaders);
         Uploaders.CanLoadMore = () => IsLoggedIn && HasMore && IsSearchUploaders;
         Tracks.FetchPage = Uploaders.FetchPage = FetchIncrementalPageAsync;
         Player = new(Client, App.DispatcherQueue);
+        PreferHiRes = Store.GetSetting("preferHiRes", "true") != "false";
+        Player.PreferHiRes = PreferHiRes;
         Lines.CollectionChanged += (_, _) => { OnPropertyChanged(nameof(HasLyrics)); OnPropertyChanged(nameof(IsSubtitleLoading)); UpdateSubtitleHighlight(); };
         Tracks.CollectionChanged += (_, _) => { OnPropertyChanged(nameof(HasTracks)); OnPropertyChanged(nameof(CanSelectCachedTracks)); OnPropertyChanged(nameof(CacheSelectionOpacity)); UpdateClearAvailability(); };
         Folders.CollectionChanged += (_, _) => { if (IsLibraryView) IsEmpty = Folders.Count == 0; };
@@ -380,7 +383,9 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         Player.Volume = Volume / 100;
         PlaybackRate = double.TryParse(Store.GetSetting("playbackRate", "1"), CultureInfo.InvariantCulture, out var rate)
             && double.IsFinite(rate) && rate is >= .5 and <= 2 ? rate : 1;
+        AccountNotifications.CollectionChanged += (_, _) => _notificationFeed.Invalidate();
         InitializeComments();
+        LoadHotkeys();
         ThemeIndex = int.TryParse(Store.GetSetting("theme", "0"), out var theme) ? Math.Clamp(theme, 0, 2) : 0;
         SingleClickBehaviorIndex = ReadTrackBehavior("singleClickBehavior", 0);
         DoubleClickBehaviorIndex = ReadTrackBehavior("doubleClickBehavior", 1);
@@ -405,7 +410,8 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         {
             OnPropertyChanged(nameof(HasQueue)); OnPropertyChanged(nameof(HasTracks)); OnPropertyChanged(nameof(CanSelectCachedTracks)); UpdateClearAvailability();
             if (IsPlaylistView) IsEmpty = Queue.Count == 0;
-            if (_restoringQueue) return;
+            if (_restoringQueue) { SchedulePlaylistRefresh(); return; }
+            RefreshPlaylistSearch();
             if (Client.Account is { Id: > 0 } account) Store.WriteTracks($"queue:{account.Id}", Queue);
             SynchronizeQueue();
         };
@@ -542,7 +548,8 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     {
         if (_view == "notifications" && view != "notifications") DisposeNotifications();
         if (!_restoringNavigation && IsLoggedIn && (view != _view || view == "search" && (Tracks.Count > 0 || Uploaders.Count > 0)))
-            _backStack.Push(new(_view, PageTitle, SelectedFolder, Tracks.ToArray(), Uploaders.ToArray(), _query, _page, HasMore, SearchCategoryIndex, EmptyText, SpaceProfile, _spaceUserId));
+            _backStack.Push(new(_view, PageTitle, SelectedFolder, BrowseSnapshot(), Uploaders.ToArray(), _query, _page, _listSearchOriginal is null ? HasMore : _listOriginalMore, SearchCategoryIndex, EmptyText, SpaceProfile, _spaceUserId));
+        ResetListSearch();
         if (view != "cache") { IsCacheSelectionMode = false; SelectedCacheCount = 0; }
         if(view!="library") StopFolderPreviews();
         IsSearchView = view == "search";
@@ -559,6 +566,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         foreach (var property in new[] { nameof(IsHomeGridView), nameof(IsFolderGridView), nameof(IsFolderListView), nameof(IsTrackListVisible) }) OnPropertyChanged(property);
         OnPropertyChanged(nameof(CanChooseView));
         NotifyBrowseMode();
+        OnPropertyChanged(nameof(ToolbarOverflowVisibility)); OnPropertyChanged(nameof(CanSearchWithinList)); OnPropertyChanged(nameof(ListSearchPlaceholder));
         HasMore = false; IsEmpty = false;
         SelectedTrack = null;
         if (view != "folder") SelectedFolder = null;
@@ -574,7 +582,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
                 PageTitle = "最近播放"; 
                 Replace(Tracks, Store.History(Client.Account!.Id)); IsEmpty = Tracks.Count == 0; EmptyText = "播放过的内容会出现在这里。"; break;
             case "playlist":
-                PageTitle = "播放列表"; IsEmpty = Queue.Count == 0; EmptyText = "播放列表为空。"; break;
+                RefreshPlaylistSearch(); PageTitle = "播放列表"; IsEmpty = Queue.Count == 0; EmptyText = "播放列表为空。"; break;
             case "cache": PageTitle = "下载"; RefreshCacheContent(); break;
             case "notifications":
                 PageTitle = "通知中心"; IsEmpty = false; NotificationsStatus = "正在读取通知…";
@@ -754,7 +762,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     partial void OnDoubleClickBehaviorIndexChanged(int value) => Store.SetSetting("doubleClickBehavior", Math.Clamp(value, 0, 2).ToString());
 
     [RelayCommand]
-    private Task PlayAllAsync() => IsPlaylistView ? (Queue.FirstOrDefault() is { } first ? PlayQueueAsync(first) : Task.CompletedTask)
+    private Task PlayAllAsync() => IsPlaylistView ? (PlaylistTracks.FirstOrDefault() is { } first ? PlayQueueAsync(first) : Task.CompletedTask)
         : Tracks.Count == 0 ? Task.CompletedTask : SelectPlaybackAsync(Tracks[0], true, Queue.Count > 0 ? TrackPlayBehavior.Ask : TrackPlayBehavior.Append);
     [RelayCommand]
     private Task PlayAsync(Track? track) => ActivateTrackAsync(track ?? SelectedTrack ?? (IsPlaylistView ? Queue.FirstOrDefault() : Tracks.FirstOrDefault()), false);
@@ -765,7 +773,13 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     private Task SelectPlaybackAsync(Track? selected, bool playAll, TrackPlayBehavior behavior) => SafeAsync(async () =>
     {
         if (selected is null || _disposed || Client.Account is not { } account) return;
-        var requestedVersion = _selectionVersion;
+        var requestedVersion = ++_selectionVersion;
+        _selectionLoad?.Cancel();
+        using var selectionLoad = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _selectionLoad = selectionLoad;
+        var token = selectionLoad.Token;
+        try
+        {
         var view = _view; var folder = SelectedFolder;
         var fromFavorites = view == "folder" && folder is not null;
         var browseEntries = Tracks.ToArray(); var browseMore = HasMore; var browsePage = _page;
@@ -773,7 +787,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
             ?? (ConfirmQueueChange is null ? QueueChange.Cancel : await ConfirmQueueChange(fromFavorites ? folder!.Title : selected.Title));
         // Only Ask prompts, before any queue or audio change. Saved Append/Replace applies in every view.
         if (requestedVersion != _selectionVersion || choice == QueueChange.Cancel || Client.Account?.Id != account.Id) return;
-        var selection = ++_selectionVersion;
+        var selection = requestedVersion;
         selected = Store.ReadTracks($"downloads:{account.Id}").FirstOrDefault(t => QueueSelection.Same(t, selected) && DownloadService.IsCached(account.Id, t)) ?? selected;
         var provisional = !Queue.Any(item => QueueSelection.Same(item, selected));
         if (choice == QueueChange.Replace)
@@ -782,14 +796,14 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
             try { Replace(Queue, new[] { selected }); }
             finally { _restoringQueue = false; }
         }
-        _playVersion++; ShowTrackLoading(selected);
+        _playVersion++; _trackLoad?.Cancel(); ShowTrackLoading(selected);
         try
         {
             Video? video = null;
             var isCached = DownloadService.IsCached(account.Id, selected);
             if (!DebugSession.IsActive && (IsOnline || !isCached))
             {
-                try { video = await Client.GetVideoAsync(selected.Bvid, selected.Aid, _lifetime.Token); }
+                try { video = await Client.GetVideoAsync(selected.Bvid, selected.Aid, token); }
                 catch (Exception error) when (isCached && error is not OperationCanceledException) { /* Keep offline audio playable. */ }
             }
             if (selection != _selectionVersion) return;
@@ -805,11 +819,13 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
             if (fromFavorites && browseMore)
             {
                 var full = entries.ToList(); var page = browsePage + 1; var more = true;
+                var known = new HashSet<(string, int)>(full.Select(TrackKey));
                 while (more)
                 {
-                    var next = await Client.GetFolderTracksAsync(folder!.Id, page++, _lifetime.Token);
-                    foreach (var item in next.Items) if (!full.Any(t => QueueSelection.Same(t, item))) full.Add(item);
-                    more = next.HasMore && next.Items.Count > 0;
+                    var next = await Task.Run(() => Client.GetFolderTracksAsync(folder!.Id, page++, token), token);
+                    var added = 0;
+                    foreach (var item in next.Items) if (known.Add(TrackKey(item))) { full.Add(item); added++; }
+                    more = next.HasMore && added > 0;
                     if (selection != _selectionVersion) return;
                 }
                 entries = full.ToArray();
@@ -827,9 +843,12 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException) when (selection != _selectionVersion) { }
         finally { if (selection == _selectionVersion) IsPlaybackLoading = false; }
+        }
+        finally { if (ReferenceEquals(_selectionLoad, selectionLoad)) _selectionLoad = null; }
     }, false);
     private void ShowTrackLoading(Track track)
     {
+        if (IsPlaybackLoading && QueueSelection.Same(CurrentTrack, track) && Player.Current is null) return;
         SaveProgress();
         _restoringQueue = true;
         try { Player.Stop(); if (!Queue.Any(item => QueueSelection.Same(item, track))) Queue.Add(track); }
@@ -839,7 +858,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     }
     public Task PlayQueueAsync(Track track) => SafeAsync(async () =>
     {
-        _selectionVersion++;
+        _selectionVersion++; _selectionLoad?.Cancel();
         if (!Queue.Any(t => QueueSelection.Same(t, track))) Queue.Add(track);
         await PlayTrackAsync(track);
     }, false);
@@ -861,6 +880,10 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     private async Task PlayTrackAsync(Track track, double startPosition = 0)
     {
         var version = ++_playVersion;
+        _trackLoad?.Cancel();
+        using var load = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        load.CancelAfter(TimeSpan.FromSeconds(30)); _trackLoad = load;
+        var token = load.Token;
         ShowTrackLoading(track);
         try
         {
@@ -871,7 +894,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
             }
             if (track.Cid == 0 && string.IsNullOrEmpty(track.LocalFile))
             {
-                var video = await Client.GetVideoAsync(track.Bvid, track.Aid);
+                var video = await Client.GetVideoAsync(track.Bvid, track.Aid, token);
                 if (version != _playVersion) return;
                 var resolved = video.Parts.FirstOrDefault(p => p.Page == track.Page) ?? video.Parts[0];
                 var index = Queue.ToList().FindIndex(t => QueueSelection.Same(t, track));
@@ -886,12 +909,12 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
             track = Store.ApplyMetadata(Client.Account!.Id, track);
             if (version != _playVersion || !Queue.Any(t => QueueSelection.Same(t, track))) return;
             UpdateCurrentDisplay(track);
-            await Player.PlayAsync(track, startPosition);
+            await Player.PlayAsync(track, startPosition, token);
             if (version != _playVersion) return;
             Store.SaveProgress(Client.Account.Id, track, 0);
         }
         catch (OperationCanceledException) when (version != _playVersion) { }
-        finally { if (version == _playVersion) IsPlaybackLoading = false; }
+        finally { if (ReferenceEquals(_trackLoad, load)) _trackLoad = null; if (version == _playVersion) IsPlaybackLoading = false; }
     }
     private bool _settingAutomaticSubtitle;
     private bool _subtitleManuallySelected;
@@ -1019,7 +1042,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     [RelayCommand] private Task PreviousAsync() => SafeAsync(() => MoveAsync(false, false), false);
     private async Task MoveAsync(bool next, bool ended)
     {
-        _selectionVersion++;
+        _selectionVersion++; _selectionLoad?.Cancel();
         if (Queue.Count == 0) return;
         if (!next && Player.Position > 3) { Player.Seek(0); return; }
         if (ended && RepeatMode == 2) { Player.Seek(0); Player.Resume(); return; }
@@ -1162,7 +1185,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
                     if (job.IsCancelling || job.Status == "正在下载字幕") return;
                     job.Progress = value; job.Status = value < 70 ? "正在下载" : "正在转码";
                 });
-                var downloaded = await new DownloadService().DownloadAsync(Client, job.Account, job.Track, progress, token, job.Directory, committed: value => created = value, options: job.Options);
+                var downloaded = await new DownloadService().DownloadAsync(Client, job.Account, job.Track, progress, token, job.Directory, committed: value => created = value, options: job.Options, preferHiRes: job.PreferredHiRes);
                 token.ThrowIfCancellationRequested();
                 if (IsOnline)
                 {
@@ -1402,6 +1425,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         SaveProgress(); _disposed = true; DisposeComments(); _lifetime.Cancel(); _timer.Stop();
         _login?.Cancel(); _browse?.Cancel(); _subtitleDiscovery?.Cancel(); _subtitles?.Cancel(); _folderPreviews?.Cancel();
+        _listSearch?.Cancel(); _selectionLoad?.Cancel(); _trackLoad?.Cancel();
         DisposeNotifications();
         Player.Dispose(); Client.Dispose(); Store.Dispose();
     }

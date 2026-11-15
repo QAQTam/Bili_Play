@@ -43,13 +43,11 @@ python -B tools/check_release.py --notes <工程外的更新日志.md>
 
 可准备工程外 JSON 离线核对 Release 表单：字段为 GitHub 的 tag_name、name、prerelease、body、assets（含 name）。执行 python -B tools/check_release.py --release-json <文件>，不会创建或修改远端 Release。
 
-## GitHub Actions
+## 本地校验
 
-Release policy 工作流对 main 推送、PR 校验当前版本来源；对新 Tag 保留严格的附注、版本及提交检查。Release 事件和手动历史审计均从默认分支取得当前工具，只读读取目标标签中的版本文件，不检出或执行旧版本代码。Release 事件只核对标题、预发布标记和附件名称，不检查或改写已有更新说明、贡献署名。手动运行可指定任一历史标签；留空审计全部标签。
+本仓库已停用 GitHub Actions，并移除云端工作流。构建、测试、版本校验、签名和隐私检查在本地执行，不依赖云端检查或自动发布。上述本地发布检查命令仍须执行；历史审计文档保留原始记录。
 
-权限仅 contents: read，无签名密钥，不安装软件、不上传附件、不创建/删除/覆盖 Release。CI 不下载或执行远端二进制，不能据此声称远端附件签名、隐私或内部版本已验证。
-
-在 GitHub 网页直接发布时，published/edited 检查在操作之后发生，并非事前阻断，务必先做本地检查。可由管理员把 Release policy 设为分支必需检查；本次未修改保护设置。历史审计不依赖旧标签中是否存在新工具，不为补工具重写旧提交。历史审计不充当正式发布验收，不替代本地严格的 --tag / --asset 检查。
+`tools/Test.ps1 -Visual` 使用 `DevelopmentBuild=true` 运行核心、Windows 原生和离线界面测试，结束后清理生成物。`tools/Update-All.ps1` 构建隔离开发版本和正式安装包，验证商店身份、资源、签名及分发隐私后清理工作区输出。脚本使用 PowerShell 7 运行，不自动安装应用或信任证书。
 
 ## Windows 历史审计入口
 

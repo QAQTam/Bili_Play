@@ -89,7 +89,7 @@ public sealed partial class MainWindow
             try
             {
                 RootFrame.Navigate(typeof(MainPage));
-                ViewModel = ((MainPage)RootFrame.Content).ViewModel;
+                ViewModel = ((MainPage)RootFrame.Content).ViewModel; BindHotkeys();
                 ViewModel.BrowseChanged += CloseSearchHistory;
                 Bindings.Update();
                 completion.TrySetResult();
@@ -103,7 +103,7 @@ public sealed partial class MainWindow
         AccountFlyout.Hide(); CloseSearchHistory(); _suggestionsCache.Clear();
         ViewModel.Dispose(); AppProfile.SetProfile(profileId); ArtworkCache.ResetScope();
         RootFrame.Navigate(typeof(MainPage));
-        ViewModel = ((MainPage)RootFrame.Content).ViewModel;
+        ViewModel = ((MainPage)RootFrame.Content).ViewModel; BindHotkeys();
         ViewModel.BrowseChanged += CloseSearchHistory;
         ViewModel.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(ViewModel.IsLoggedIn) && !ViewModel.IsLoggedIn) CloseSearchHistory(); };
         Title = AppProfile.DisplayName; AppTitleBar.Title = Title; TitleSearch.Text = ""; Bindings.Update();

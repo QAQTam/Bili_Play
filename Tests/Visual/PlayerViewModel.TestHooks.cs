@@ -5,6 +5,8 @@ namespace BiliPlay.ViewModels;
 // Included only by builds that explicitly set EnableVisualChecks=true.
 public partial class PlayerViewModel
 {
+    internal Func<int,CancellationToken,Task<PageResult<Track>>>? ListPageReader { get; set; }
+    internal Func<DownloadJob,Task>? BatchDownloadRunner { get; set; }
     internal Func<int,CancellationToken,Task<PageResult<Track>>>? HomeReader { get; set; }
     internal Func<Track,CommentSort,int,CancellationToken,Task<CommentPage>>? CommentsReader { get; set; }
     internal Func<Track,string,long,long,CancellationToken,Task<BiliComment?>>? CommentReplySender { get; set; }

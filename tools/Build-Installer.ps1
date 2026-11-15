@@ -89,8 +89,10 @@ try {
         $hex = [Convert]::ToHexString($assembly)
         $productionMarker = [Convert]::ToHexString([Text.Encoding]::Unicode.GetBytes('BiliPlay.BilibiliSession'))
         $developmentMarker = [Convert]::ToHexString([Text.Encoding]::Unicode.GetBytes('BiliPlay.BilibiliSession.Development'))
-        $testMarker = [Convert]::ToHexString([Text.Encoding]::UTF8.GetBytes('RunVisualCheckAsync'))
-        if (-not $hex.Contains($productionMarker) -or $hex.Contains($developmentMarker) -or $hex.Contains($testMarker)) { throw '安装包使用了开发或测试配置。' }
+        if (-not $hex.Contains($productionMarker) -or $hex.Contains($developmentMarker)) { throw '安装包使用了开发或测试配置。' }
+        foreach ($testEntry in @('RunVisualCheckAsync', 'ConfirmDebugModeAsync', 'ListPageReader', 'BatchDownloadRunner')) {
+            if ($hex.Contains([Convert]::ToHexString([Text.Encoding]::UTF8.GetBytes($testEntry)))) { throw '正式安装包包含测试入口。' }
+        }
         $profile = [Environment]::GetFolderPath('UserProfile')
         foreach ($name in @('Bili_Play.dll', 'Bili_Play.exe', 'BiliPlay.Core.dll', 'AppxManifest.xml', 'Bili_Play.deps.json', 'Bili_Play.runtimeconfig.json')) {
             $bytes = Read-Entry $name

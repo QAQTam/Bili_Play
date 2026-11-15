@@ -9,6 +9,8 @@ namespace BiliPlay.Services;
 
 public sealed class PlaybackService(BilibiliClient client, DispatcherQueue dispatcher) : IDisposable
 {
+    private bool _preferHiRes = true;
+    public bool PreferHiRes { get => _preferHiRes; set { _preferHiRes = value; if (_engine is not null) _engine.PreferHiRes = value; } }
     private PlaybackEngine? _engine;
     private double _volume = .75;
     private double _playbackRate = 1;
@@ -42,7 +44,7 @@ public sealed class PlaybackService(BilibiliClient client, DispatcherQueue dispa
         get
         {
             if (_engine is not null) return _engine;
-            _engine = new(client, dispatcher) { Volume = _volume, PlaybackRate = _playbackRate };
+            _engine = new(client, dispatcher) { Volume = _volume, PlaybackRate = _playbackRate, PreferHiRes = _preferHiRes };
             _engine.Changed += () => Changed?.Invoke();
             _engine.Ended += () => Ended?.Invoke();
             _engine.SkipRequested += next => SkipRequested?.Invoke(next);
@@ -52,7 +54,7 @@ public sealed class PlaybackService(BilibiliClient client, DispatcherQueue dispa
         }
     }
     public void PrepareSystemSession(Track? track) { if (!App.IsVisualCheck) Engine.PrepareSystemSession(track); }
-    public Task PlayAsync(Track track, double startPosition = 0) => Engine.PlayAsync(track, startPosition);
+    public Task PlayAsync(Track track, double startPosition = 0, CancellationToken token = default) => Engine.PlayAsync(track, startPosition, token);
     public void Toggle() => _engine?.Toggle();
     public void Resume() => _engine?.Resume();
     public void Pause() => _engine?.Pause();
@@ -64,6 +66,7 @@ public sealed class PlaybackService(BilibiliClient client, DispatcherQueue dispa
 
 internal sealed class PlaybackEngine : IDisposable
 {
+    public bool PreferHiRes { get; set; } = true;
     private readonly BilibiliClient _client;
     private readonly DispatcherQueue _dispatcher;
     private AudioPlayback _audio = new();
@@ -119,7 +122,7 @@ internal sealed class PlaybackEngine : IDisposable
             var playing = prepared.ActivateInsteadOf(live);
             _audio = prepared; prepared = null; _stream = selected; _fallbackPosition = 0; _resumeAfterOpen = playing;
             WirePlayer(_player);
-            live.Dispose(); PublishPlaybackState();
+            live.Retire(); PublishPlaybackState();
         }
         catch (OperationCanceledException)
         { if (ReferenceEquals(_qualityLoad, load)) Failed?.Invoke("音质切换超时，继续播放原音质。"); }
@@ -127,7 +130,7 @@ internal sealed class PlaybackEngine : IDisposable
         { if (ReferenceEquals(_qualityLoad, load)) Failed?.Invoke("音质切换失败，继续播放原音质：" + error.Message); }
         finally
         {
-            prepared?.Dispose();
+            prepared?.Retire();
             if (ReferenceEquals(_qualityLoad, load))
             {
                 _qualityLoad = null; _pendingQuality = null;
@@ -227,12 +230,14 @@ internal sealed class PlaybackEngine : IDisposable
         updater.Update(); _controls.PlaybackStatus = MediaPlaybackStatus.Paused;
         _ = ApplyThumbnailAsync(track);
     }
-    public async Task PlayAsync(Track track, double startPosition = 0)
+    public async Task PlayAsync(Track track, double startPosition = 0, CancellationToken cancellation = default)
     {
         _mediaArtwork.Reset();
         CancelQualitySwitch();
-        _load?.Cancel(); _load?.Dispose();
-        var load = _load = new();
+        _load?.Cancel();
+        _load?.Dispose();
+        var load = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        _load = load;
         var token = load.Token; _pauseRequested = false;
         var stream = string.IsNullOrEmpty(track.LocalFile) ? await _client.GetAudioAsync(track, token) : null;
         token.ThrowIfCancellationRequested();
@@ -240,7 +245,7 @@ internal sealed class PlaybackEngine : IDisposable
         _fallbackPosition = Math.Max(0, startPosition); _resumeAfterOpen = !_pauseRequested; _availableStream = stream;
         Current = track;
         _controls.IsPlayEnabled = _controls.IsPauseEnabled = _controls.IsNextEnabled = _controls.IsPreviousEnabled = true;
-        if (stream is not null) SetSource(stream);
+        if (stream is not null) SetSource(AudioQualityPreference.Choose(stream, PreferHiRes, _client.Account?.IsVip == true));
         else
         {
             var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(track.LocalFile);
@@ -290,7 +295,7 @@ internal sealed class PlaybackEngine : IDisposable
             var stream = await _client.GetPageAudioAsync(track, load.Token);
             if (load.IsCancellationRequested || !ReferenceEquals(load, _load) || Current != track) return;
             _fallbackPosition = Position; _resumeAfterOpen = !_pauseRequested; _availableStream = stream;
-            SetSource(stream); Changed?.Invoke();
+            SetSource(AudioQualityPreference.Choose(stream, PreferHiRes, _client.Account?.IsVip == true)); Changed?.Invoke();
         }
         catch (OperationCanceledException) when (load.IsCancellationRequested) { }
         catch (Exception error) { Failed?.Invoke("音频播放失败，网页音源回退也未成功：" + error.Message); }
@@ -321,14 +326,24 @@ internal sealed class PlaybackEngine : IDisposable
     {
         _mediaArtwork.Reset();
         CancelQualitySwitch();
-        _load?.Cancel(); _proxy.Clear(); _player.Pause(); _player.Source = null;
-        _item?.Source.Dispose(); _item = null; _stream = null; _availableStream = null; Current = null;
+        _load?.Cancel(); _load?.Dispose(); _load = null;
+        if (_item is not null)
+        {
+            var previous = _audio;
+            _audio = new();
+            _audio.Player.Volume = previous.Player.Volume;
+            _audio.PlaybackRate = previous.PlaybackRate;
+            WirePlayer(_player);
+            previous.Retire();
+        }
+        else _proxy.Clear();
+        _stream = null; _availableStream = null; Current = null;
         PrepareSystemSession(null); Changed?.Invoke();
     }
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        Stop(); _mediaArtwork.Dispose(); _controls.IsEnabled = false; _load?.Dispose(); _audio.Dispose();
+        Stop(); _mediaArtwork.Dispose(); _controls.IsEnabled = false; _audio.Retire();
     }
 }

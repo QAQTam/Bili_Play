@@ -81,6 +81,7 @@ public sealed partial class PlayerViewModel
 
     private void ClearAccountPages()
     {
+        ResetListSearch();
         _browse?.Cancel(); _browseVersion++;
         DisposeNotifications(); IsNotificationsLoading = false; NotificationsStatus = "";
         AccountNotifications.Clear();
@@ -92,7 +93,7 @@ public sealed partial class PlayerViewModel
     {
         if (user <= 0 || Client.Account is null) return;
         if (IsSpaceView && SpaceProfile?.Id != user)
-            _backStack.Push(new(_view, PageTitle, SelectedFolder, Tracks.ToArray(), Uploaders.ToArray(), _query, _page, HasMore, SearchCategoryIndex, EmptyText, SpaceProfile, _spaceUserId));
+            _backStack.Push(new(_view, PageTitle, SelectedFolder, BrowseSnapshot(), Uploaders.ToArray(), _query, _page, _listSearchOriginal is null ? HasMore : _listOriginalMore, SearchCategoryIndex, EmptyText, SpaceProfile, _spaceUserId));
         IsLyricsOpen = false; ShowComments = false; ShowQueue = false;
         Navigate("space"); _spaceUserId = user; SpaceProfile = null; Tracks.Clear(); _page = 1;
         _browse = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);

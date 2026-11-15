@@ -10,6 +10,7 @@ public sealed partial class DownloadJob(Track track, long account, string direct
     public string Thumbnail => Track.Thumbnail;
     public void RefreshArtwork() => OnPropertyChanged(nameof(Thumbnail));
     public DownloadOptions? Options { get; } = options;
+    public bool? PreferredHiRes { get; init; }
     public long Account { get; } = account;
     public string Directory { get; } = directory;
     public CancellationTokenSource Cancellation { get; } = cancellation;

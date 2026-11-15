@@ -11,6 +11,7 @@ namespace BiliPlay;
 public sealed partial class MainPage
 {
     private CancellationTokenSource? _pendingTrackClick;
+    private int _trackGestureVersion;
 #if VISUAL_CHECKS
     private Task _trackActivationTask = Task.CompletedTask;
 #endif
@@ -36,11 +37,12 @@ public sealed partial class MainPage
 
     private void CancelPendingTrackClick()
     {
+        _trackGestureVersion++;
         _pendingTrackClick?.Cancel(); _pendingTrackClick = null;
     }
     private void TrackItemClicked(object sender, ItemClickEventArgs args)
     {
-        if (sender is not ListViewBase list || args.ClickedItem is not Track track || ViewModel.IsCacheSelectionMode) return;
+        if (sender is not ListViewBase list || args.ClickedItem is not Track track || ViewModel.IsTrackSelectionMode) return;
         ScheduleTrackClick(list, track);
     }
     private void ScheduleTrackClick(ListViewBase list, Track track)
@@ -63,7 +65,9 @@ public sealed partial class MainPage
             await Task.Delay(TimeSpan.FromMilliseconds(GetDoubleClickTime() + 30), pending.Token);
             if (!ReferenceEquals(_pendingTrackClick, pending)) return;
             _pendingTrackClick = null;
+            var gesture = _trackGestureVersion;
             await PlayHomeCoverLaunchAsync(list, track);
+            if (gesture != _trackGestureVersion) return;
             await ViewModel.ActivateTrackAsync(track, false, list == PlaylistList || list == QueueList);
         }
         catch (OperationCanceledException) when (pending.IsCancellationRequested) { }
@@ -71,7 +75,7 @@ public sealed partial class MainPage
     }
     private void TrackDoubleTapped(object sender, DoubleTappedRoutedEventArgs args)
     {
-        if (sender is not ListViewBase list || ViewModel.IsCacheSelectionMode) return;
+        if (sender is not ListViewBase list || ViewModel.IsTrackSelectionMode) return;
         for (var node = args.OriginalSource as DependencyObject; node is not null && node != list; node = VisualTreeHelper.GetParent(node))
         {
             // Buttons, UP links and inline playback controls keep their own native behavior.
@@ -97,7 +101,9 @@ public sealed partial class MainPage
     }
     private async Task ActivateDoubleTrackAsync(ListViewBase list, Track track)
     {
+        var gesture = _trackGestureVersion;
         await PlayHomeCoverLaunchAsync(list, track);
+        if (gesture != _trackGestureVersion) return;
         await ViewModel.ActivateTrackAsync(track, true, list == PlaylistList || list == QueueList);
     }
     private async Task PlayHomeCoverLaunchAsync(ListViewBase list, Track track)

@@ -38,6 +38,7 @@ public sealed partial class MainWindow : Window
         var page = (MainPage)RootFrame.Content;
         ViewModel = page.ViewModel;
         Bindings.Update();
+        BindHotkeys();
         // A light-dismiss Popup captures outside input and can restore focus back into GotFocus,
         // reopening itself after a search. Keep suggestions non-modal and dismiss without eating clicks.
         WindowRoot.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) => DismissHistoryOutside(args.OriginalSource as DependencyObject)), true);
@@ -63,7 +64,7 @@ public sealed partial class MainWindow : Window
             if (!_exitRequested && !DebugSession.IsActive && ViewModel.IsLoggedIn && ViewModel.CloseToTray && _tray?.Available == true)
             { SaveWindowPlacement(); if (ViewModel.CloseBehaviorIndex == 2) ViewModel.PauseForTray(); e.Cancel = true; AppWindow.Hide(); }
         };
-        Closed += (_, _) => { CancelSearchRecommendations(); _suggestionsCache.Clear(); SaveWindowPlacement(); _placementTimer?.Stop(); _tray?.Dispose(); try {ViewModel.Dispose();} finally {ArtworkCache.ResetScope();DebugSession.End();} };
+        Closed += (_, _) => { CancelSearchRecommendations(); _suggestionsCache.Clear(); SaveWindowPlacement(); _placementTimer?.Stop(); _tray?.Dispose(); _hotkeys?.Dispose(); try {ViewModel.Dispose();} finally {ArtworkCache.ResetScope();DebugSession.End();} };
     }
     public void ShowMainWindow()
     {

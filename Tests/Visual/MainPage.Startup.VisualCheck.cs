@@ -130,7 +130,7 @@ public sealed partial class MainPage
             ViewModel.SearchGridMode=false;Check(ViewModel.IsUploaderListView&&!ViewModel.IsUploaderGridView,"UP 主列表视图切换失败");ViewModel.SearchCategoryIndex=0;
             ViewModel.Navigate("settings");
             await BiliPlay.Services.ArtworkCache.ClearAsync();Check(ClearImageCacheButton.Content as string=="清除缓存","图片缓存入口缺失");
-            Check(SettingsOptions.Children.SequenceEqual(new UIElement[]{GeneralSettings,HistorySettings,PlaybackSettings,StorageSettings,CompatibilitySettings}),"设置分类不完整");
+            Check(SettingsOptions.Children.SequenceEqual(new UIElement[]{GeneralSettings,HistorySettings,PlaybackSettings,HotkeySettings,StorageSettings,CompatibilitySettings}),"设置分类不完整");
             Check(HistorySettings.Children.OfType<TextBlock>().Single().Text == "隐私", "隐私分类名称未更新");
             Check(GeneralSettings.Children.Contains(AppThemeBox) && GeneralSettings.Children.Contains(CloseBehaviorBox)
                 && HistorySettings.Children.Contains(RecordHistorySwitch) && HistorySettings.Children.Contains(RecordSearchHistorySwitch)
