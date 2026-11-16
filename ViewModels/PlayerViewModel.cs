@@ -93,6 +93,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     {
         if (_disposed || !IsCacheView || Client.Account is null) return;
         if (CacheTabIndex == 0) Replace(Tracks, Store.ReadTracks($"downloads:{Client.Account.Id}").Where(t => DownloadService.IsCached(Client.Account.Id, t)));
+        RefreshDownloadCounts();
         IsEmpty = CacheTabIndex == 1 ? Downloads.Count == 0 : Tracks.Count == 0;
         EmptyText = CacheTabIndex == 1 ? "没有正在下载的音乐。" : "下载的音乐会显示在这里。";
     }
@@ -182,7 +183,9 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool IsBusy { get; set; }
     [ObservableProperty] public partial string PageTitle { get; set; } = "首页";
     [ObservableProperty] public partial string SearchText { get; set; } = "";
-    [ObservableProperty] public partial Folder? SelectedFolder { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanManageFolderSelection), nameof(CanRemoveFolderSelection))]
+    public partial Folder? SelectedFolder { get; set; }
     [ObservableProperty] public partial Track? SelectedTrack { get; set; }
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCurrentTrack))]
@@ -336,10 +339,10 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsHomeGridView), nameof(IsTrackListVisible), nameof(BrowseGridMode), nameof(BrowseListMode), nameof(IsUploaderGridView), nameof(IsUploaderListView))]
     public partial bool SearchGridMode { get; set; }
     partial void OnSearchGridModeChanged(bool value) => Store.SetSetting("searchGrid", value ? "true" : "false");
-    public bool IsHomeGridView => IsHomeView && HomeGridMode || IsFolderView && FolderTracksGridMode && !IsFolderSelectionMode || IsSearchView && !IsSearchUploaders && SearchGridMode || IsSpaceView && SpaceGridMode;
+    public bool IsHomeGridView => IsHomeView && HomeGridMode || IsFolderView && FolderTracksGridMode || IsSearchView && !IsSearchUploaders && SearchGridMode || IsSpaceView && SpaceGridMode;
     public bool IsFolderGridView => IsLibraryView && FolderGridMode;
     public bool IsFolderListView => IsLibraryView && !FolderGridMode;
-    public bool IsTrackListVisible => !IsPlaylistView && !IsDownloadingView && !IsSearchUploaders && (IsTracksView && (!IsFolderView || !FolderTracksGridMode || IsFolderSelectionMode) && (!IsSearchView || !SearchGridMode) && (!IsSpaceView || !SpaceGridMode) || IsHomeView && !HomeGridMode);
+    public bool IsTrackListVisible => !IsPlaylistView && !IsDownloadingView && !IsSearchUploaders && (IsTracksView && (!IsFolderView || !FolderTracksGridMode) && (!IsSearchView || !SearchGridMode) && (!IsSpaceView || !SpaceGridMode) || IsHomeView && !HomeGridMode);
     public bool BrowseGridMode => IsLibraryView ? FolderGridMode : IsFolderView ? FolderTracksGridMode : IsSearchView ? SearchGridMode : IsSpaceView ? SpaceGridMode : HomeGridMode;
     public bool BrowseListMode => !BrowseGridMode;
     partial void OnHomeGridModeChanged(bool value) { Store.SetSetting("homeGrid", value ? "true" : "false"); NotifyBrowseMode(); }
@@ -399,7 +402,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
         var previousDefault = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic, Environment.SpecialFolderOption.DoNotVerify);
         CacheDirectory = string.Equals(savedDirectory.TrimEnd(Path.DirectorySeparatorChar), previousDefault.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
             ? DownloadService.CacheDirectory(0) : savedDirectory;
-        Downloads.CollectionChanged += (_, _) => { if (IsDownloadingView) RefreshCacheContent(); };
+        Downloads.CollectionChanged += (_, _) => { OnPropertyChanged(nameof(DownloadingTabLabel)); RefreshDownloadCounts(); if (IsDownloadingView) RefreshCacheContent(); };
         SidebarWidth = double.TryParse(Store.GetSetting("sidebarWidth", "220"), CultureInfo.InvariantCulture, out var width) ? Math.Clamp(width, 180, 420) : 220;
         HomeGridMode = Store.GetSetting("homeGrid", "true") != "false";
         SearchGridMode = Store.GetSetting("searchGrid", "false") == "true";
@@ -583,7 +586,7 @@ public partial class PlayerViewModel : ObservableObject, IDisposable
                 Replace(Tracks, Store.History(Client.Account!.Id)); IsEmpty = Tracks.Count == 0; EmptyText = "播放过的内容会出现在这里。"; break;
             case "playlist":
                 RefreshPlaylistSearch(); PageTitle = "播放列表"; IsEmpty = Queue.Count == 0; EmptyText = "播放列表为空。"; break;
-            case "cache": PageTitle = "下载"; RefreshCacheContent(); break;
+            case "cache": PageTitle = "下载"; CacheTabIndex = Downloads.Count > 0 ? 1 : 0; RefreshCacheContent(); break;
             case "notifications":
                 PageTitle = "通知中心"; IsEmpty = false; NotificationsStatus = "正在读取通知…";
                 _ = RefreshNotificationsAsync(); break;

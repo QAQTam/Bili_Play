@@ -7,7 +7,7 @@ public enum CommentSort { Hot, Latest }
 public enum CommentReaction { None, Like, Dislike }
 public sealed record CommentEmote(string Text, string Url) { public bool HasImage => Url.Length > 0; }
 public sealed record CommentEmotePackage(string Name, IReadOnlyList<CommentEmote> Items);
-public sealed record BiliComment(long Id, long AuthorId, string Author, string Avatar, string Content, long Likes, long CreatedAt, bool IsPinned = false, CommentReaction Reaction = CommentReaction.None, long ReplyCount = 0, IReadOnlyList<CommentEmote>? Emotes = null)
+public sealed record BiliComment(long Id, long AuthorId, string Author, string Avatar, string Content, long Likes, long CreatedAt, bool IsPinned = false, CommentReaction Reaction = CommentReaction.None, long ReplyCount = 0, IReadOnlyList<CommentEmote>? Emotes = null, IReadOnlyList<CommentPicture>? Pictures = null)
 {
     public string Meta => (CreatedAt > 0 && CreatedAt <= 253402300799 ? DateTimeOffset.FromUnixTimeSeconds(CreatedAt).ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "")
         + (IsPinned ? " · 置顶" : "");
@@ -35,7 +35,11 @@ public sealed partial class BilibiliClient
             item.N("action") switch { 1 => CommentReaction.Like, 2 => CommentReaction.Dislike, _ => CommentReaction.None },
             Math.Max(0,(item.O("rcount").ValueKind == JsonValueKind.Undefined ? item.N("count") : item.N("rcount"))),
             item.O("content").O("emote").ValueKind == JsonValueKind.Object
-                ? item.O("content").O("emote").EnumerateObject().Select(pair=>new CommentEmote(pair.Name,ImageUrl(pair.Value.S("url")))).Where(emote=>emote.Url.Length>0).ToArray() : null);
+                ? item.O("content").O("emote").EnumerateObject().Select(pair=>new CommentEmote(pair.Name,ImageUrl(pair.Value.S("url")))).Where(emote=>emote.Url.Length>0).ToArray() : null,
+            item.O("content").O("pictures").A().Select(picture => new CommentPicture(
+                CommentPicture.TryUrl(picture.S("img_src"), out var uri) ? uri!.AbsoluteUri : "",
+                (int)Math.Clamp(picture.N("img_width"), 1, 100000), (int)Math.Clamp(picture.N("img_height"), 1, 100000),
+                CommentPicture.ReadSize(picture.S("img_size")))).Where(picture => picture.IsValid).DistinctBy(picture => picture.Url).Take(CommentImagePayload.MaxPictures).ToArray());
     }
     public async Task<CommentPage> GetCommentsAsync(long aid, CommentSort sort, int page = 1, CancellationToken ct = default)
     {
@@ -101,18 +105,45 @@ public sealed partial class BilibiliClient
             .Where(item=>item.Text.Length>0&&item.Url.Length>0).DistinctBy(item=>item.Text).ToArray()))
             .Where(package=>package.Items.Count>0).ToArray();
     }
-    public async Task<BiliComment?> PostCommentAsync(long aid, string message, CancellationToken ct = default, long root = 0, long parent = 0)
+    public async Task<BiliComment?> PostCommentAsync(long aid, string message, CancellationToken ct = default, long root = 0, long parent = 0, IReadOnlyList<CommentPicture>? pictures = null)
     {
         RequireAccount();
         if (aid <= 0) throw new ArgumentOutOfRangeException(nameof(aid));
         if (root < 0 || parent < 0 || (root == 0) != (parent == 0)) throw new ArgumentException("回复的根评论和目标评论无效。 ");
         message = message.Trim();
         if (message.Length is 0 or > 1000) throw new ArgumentException("评论应为 1 到 1000 个字符。",nameof(message));
+        if (pictures is { Count: > CommentImagePayload.MaxPictures } || pictures?.Any(picture => !picture.IsValid) == true)
+            throw new ArgumentException("评论图片无效，单条评论最多 9 张图片。", nameof(pictures));
         await EnsureCommentSessionAsync(ct);
         // POST is sent once. Do not retry: a timeout can happen after the server has accepted the comment.
         var form = new Dictionary<string,string> { ["type"]="1", ["oid"]=aid.ToString(), ["message"]=message, ["plat"]="1" };
         if (root > 0) { form["root"] = root.ToString(); form["parent"] = parent.ToString(); }
+        if (pictures is { Count: > 0 })
+        {
+            form["pictures"] = JsonSerializer.Serialize(pictures.Select(picture => picture.ToRequest()));
+            form["at_name_to_mid"] = "{}"; form["gaia_source"] = "main_web";
+        }
         var data = await PostAsync("x/v2/reply/add",form,ct);
-        return ParseComment(data.O("reply"));
+        var posted = ParseComment(data.O("reply"));
+        return posted is not null && pictures is { Count: > 0 } && posted.Pictures?.Count is not > 0 ? posted with { Pictures = pictures.ToArray() } : posted;
+    }
+
+    public async Task<CommentPicture> UploadCommentImageAsync(CommentImagePayload image, CancellationToken ct = default)
+    {
+        RequireAccount(); image.Validate();
+        await EnsureCommentSessionAsync(ct);
+        var csrf = _cookies.GetCookies(Api)["bili_jct"]?.Value;
+        if (string.IsNullOrEmpty(csrf)) throw new BilibiliException(-111, "登录凭据不完整，请重新扫码登录。");
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(csrf), "csrf"); form.Add(new StringContent("daily"), "category"); form.Add(new StringContent("new_dyn"), "biz");
+        using var bytes = new ByteArrayContent(image.Bytes);
+        bytes.Headers.ContentType = new(image.MediaType);
+        // Never send a local filename, path or the original image's metadata.
+        form.Add(bytes, "file_up", image.MediaType == "image/jpeg" ? "comment.jpg" : "comment.png");
+        using var response = await _http.PostAsync(new Uri(Api, "x/dynamic/feed/draw/upload_bfs"), form, ct);
+        var data = await ReadResponseAsync(response, ct); // Writes are sent once, including uploads.
+        if (!CommentPicture.TryUrl(data.S("image_url"), out var uri) || data.N("image_width") != image.Width || data.N("image_height") != image.Height)
+            throw new InvalidDataException("图片上传返回的信息无效，请重试。");
+        return new(uri!.AbsoluteUri, image.Width, image.Height, image.Bytes.Length / 1024d);
     }
 }

@@ -75,6 +75,21 @@ public sealed class ImageDiskCache(string directory, HttpMessageHandler? handler
         }
         catch(Exception e) when(e is IOException or HttpRequestException or OperationCanceledException or UnauthorizedAccessException or ObjectDisposedException) {return null;}
     }
+    public async Task<long> GetSizeAsync()
+    {
+        await _disk.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!Directory.Exists(_directory)) return 0;
+            if ((File.GetAttributes(_directory) & FileAttributes.ReparsePoint) != 0) throw new IOException("图片缓存目录不能是链接。");
+            long bytes = 0;
+            foreach (var file in new DirectoryInfo(_directory).EnumerateFiles())
+                if ((file.Attributes & FileAttributes.ReparsePoint) == 0 && System.Text.RegularExpressions.Regex.IsMatch(file.Name, "^[a-f0-9]{64}\\.img(\\.part)?$")) bytes += file.Length;
+            return bytes;
+        }
+        finally { _disk.Release(); }
+    }
     public async Task ClearAsync()
     {
         await _disk.WaitAsync().ConfigureAwait(false);

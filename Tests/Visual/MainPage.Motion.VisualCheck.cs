@@ -137,7 +137,7 @@ public sealed partial class MainPage
                 if(NotificationList.ContainerFromIndex(i) is ListViewItem row)
                 {
                     Check(row.ActualWidth<=860,"通知行超出最大宽度");Check(row.ActualHeight<150,"通知引用文字未截断，撑高了整行");
-                    Check(row.ContentTemplateRoot is Border card && card.Margin == new Thickness(0)
+                    Check(row.ContentTemplateRoot is Grid surface && HoverSurface.GetEnabled(surface) && surface.Children.OfType<Border>().FirstOrDefault() is { } card && card.Margin == new Thickness(0)
                         && row.Padding == new Thickness(0) && Math.Abs(card.ActualWidth-row.ActualWidth)<1 && Math.Abs(card.ActualHeight-row.ActualHeight)<1,
                         "通知条目的悬浮区域超出卡片边框");
                     Check(FindVisual<Microsoft.UI.Xaml.Controls.Primitives.ListViewItemPresenter>(row)?.CornerRadius == new CornerRadius(8), "通知悬浮背景圆角与卡片不一致");

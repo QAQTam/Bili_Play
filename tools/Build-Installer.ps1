@@ -1,4 +1,4 @@
-﻿# Build a clean production MSIX. Signing keys stay outside the repository and are never distributed.
+# Build a clean production MSIX. Signing keys stay outside the repository and are never distributed.
 param([string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -90,7 +90,7 @@ try {
         $productionMarker = [Convert]::ToHexString([Text.Encoding]::Unicode.GetBytes('BiliPlay.BilibiliSession'))
         $developmentMarker = [Convert]::ToHexString([Text.Encoding]::Unicode.GetBytes('BiliPlay.BilibiliSession.Development'))
         if (-not $hex.Contains($productionMarker) -or $hex.Contains($developmentMarker)) { throw '安装包使用了开发或测试配置。' }
-        foreach ($testEntry in @('RunVisualCheckAsync', 'ConfirmDebugModeAsync', 'ListPageReader', 'BatchDownloadRunner')) {
+        foreach ($testEntry in @('RunVisualCheckAsync', 'ConfirmDebugModeAsync', 'ListPageReader', 'BatchDownloadRunner', 'CommentImageUploader', 'CommentPictureSender', 'NotificationDeleteWriter', 'ConversationWriter', 'FolderSelectionRemover', '_conversationReader')) {
             if ($hex.Contains([Convert]::ToHexString([Text.Encoding]::UTF8.GetBytes($testEntry)))) { throw '正式安装包包含测试入口。' }
         }
         $profile = [Environment]::GetFolderPath('UserProfile')

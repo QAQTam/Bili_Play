@@ -30,6 +30,37 @@ public sealed partial class PlayerViewModel
     // set by category changes and after the feed is repopulated.
     private readonly NotificationFeed _notificationFeed = new();
     public IEnumerable<AccountNotification> VisibleNotifications => _notificationFeed.Visible(AccountNotifications, NotificationCategoryIndex);
+    private readonly HashSet<(long Account, string Id)> _notificationDeletes = [];
+    public async Task<bool> DeleteNotificationAsync(AccountNotification item, long account)
+    {
+        if (_disposed || account <= 0 || Client.Account?.Id != account || !AccountNotifications.Contains(item) || !BilibiliClient.CanDeleteNotification(item)) return false;
+        if (BiliPlay.Services.DebugSession.IsActive) return false;
+        var key = (account, item.Category == "私信" ? "session:" + item.TalkerId : item.Id);
+        if (!_notificationDeletes.Add(key)) return false;
+        using var request = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, _accountDownloads.Token);
+        request.CancelAfter(TimeSpan.FromSeconds(25));
+        try
+        {
+#if VISUAL_CHECKS
+            if (NotificationDeleteWriter is { } writer) await writer(item, request.Token);
+            else
+#endif
+                await Client.DeleteNotificationAsync(item, request.Token);
+            if (_disposed || Client.Account?.Id != account) return false;
+            // Only the acknowledged cloud write changes the displayed list. Do not persist local tombstones.
+            _notificationsVersion++; DisposeNotifications(); IsNotificationsLoading = false; NotificationsStatus = "";
+            foreach (var current in AccountNotifications.Where(row => row.Id == item.Id).ToArray()) AccountNotifications.Remove(current);
+            _notificationFeed.Invalidate();
+            OnPropertyChanged(nameof(VisibleNotifications)); OnPropertyChanged(nameof(NotificationsEmpty));
+            return true;
+        }
+        catch (Exception)
+        {
+            if (!_disposed && Client.Account?.Id == account) Notify("云端删除未能确认，通知已保留。请刷新核对后再试。", NoticeLevel.Warn);
+            return false;
+        }
+        finally { _notificationDeletes.Remove(key); }
+    }
     partial void OnNotificationCategoryIndexChanged(int value) => _notificationFeed.Invalidate();
     public bool NotificationsEmpty => !IsNotificationsLoading && !VisibleNotifications.Any();
 

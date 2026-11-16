@@ -16,19 +16,19 @@
     <Grid x:Name="WindowRoot" Background="{ThemeResource AppCanvasBrush}">
         <Grid.Resources>
             <local:AvatarImageConverter x:Key="SocialAvatar"/>
-            <DataTemplate x:Key="SocialUserTemplate">
+            <DataTemplate x:Key="SocialUserTemplate"><Grid local:HoverSurface.Enabled="True">
                 <Grid Padding="8,10" ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                     <PersonPicture Width="48" Height="48" ProfilePicture="{Binding Avatar, Converter={StaticResource SocialAvatar}, ConverterParameter=96}"/>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4"><TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Signature}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"/></StackPanel>
                 </Grid>
-            </DataTemplate>
-            <DataTemplate x:Key="FollowingUserTemplate">
+            </Grid></DataTemplate>
+            <DataTemplate x:Key="FollowingUserTemplate"><Grid local:HoverSurface.Enabled="True">
                 <Grid Padding="8,10" ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <PersonPicture Width="48" Height="48" ProfilePicture="{Binding Avatar, Converter={StaticResource SocialAvatar}, ConverterParameter=96}"/>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4"><TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Signature}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"/></StackPanel>
                     <Button Grid.Column="2" Content="取消关注" Tag="{Binding}" Click="UnfollowSocialUserClick" VerticalAlignment="Center"/>
                 </Grid>
-            </DataTemplate>
+            </Grid></DataTemplate>
         </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />

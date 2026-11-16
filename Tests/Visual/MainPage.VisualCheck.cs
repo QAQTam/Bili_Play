@@ -39,6 +39,7 @@ public sealed partial class MainPage
             await VerifyDownloadLabelsAndAboutAsync(directory);
             await VerifyPageEntrancesAsync();
             await VerifySpacesAndConversationsAsync(directory);
+            await VerifyNotificationActionsAsync();
             await VerifyPagedTrackDedupAsync();
             await VerifyLibraryToolsAsync();
             await VerifyNotificationVirtualizationAsync();
@@ -48,6 +49,7 @@ public sealed partial class MainPage
             await VerifyImmediateSelectionAsync();
             await VerifyStartupSubtitlesAsync(directory);
             await VerifyCommentsAndSpeedAsync(directory);
+            await VerifyCommentImagesAsync(directory);
             await VerifyLocalFolderOrderAsync();
             await VerifyCacheSelectionAsync(directory);
             var song = new Track(1,"BV1xx411c7mD","在月光下，等一首未完的歌 / A Song After Midnight","林间电台","",240,123);

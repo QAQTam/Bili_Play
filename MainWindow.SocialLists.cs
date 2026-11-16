@@ -67,6 +67,8 @@ public sealed partial class MainWindow
         var refresh = new Button { Content = "刷新", HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 0, 8) };
         var list = new ListView
         {
+            ItemContainerStyle = new Style(typeof(ListViewItem)) { Setters = {
+                new Setter(Control.PaddingProperty, new Thickness(0)), new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch), new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Stretch) } },
             ItemsSource = users, ItemTemplate = (DataTemplate)WindowRoot.Resources[followers ? "SocialUserTemplate" : "FollowingUserTemplate"],
             SelectionMode = ListViewSelectionMode.None, IsItemClickEnabled = true,
             IncrementalLoadingTrigger = IncrementalLoadingTrigger.Edge, IncrementalLoadingThreshold = 1

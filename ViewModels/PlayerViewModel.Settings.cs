@@ -7,6 +7,19 @@ public partial class PlayerViewModel
 {
     private bool _loadingSettings = true;
     private int _imageSettingsVersion;
+    private int _imageCacheSizeVersion;
+    [ObservableProperty] public partial string ImageCacheSize { get; set; } = "正在计算…";
+    public async Task RefreshImageCacheSizeAsync()
+    {
+        var version = ++_imageCacheSizeVersion;
+        try
+        {
+            var bytes = await ArtworkCache.GetSizeAsync();
+            if (!_disposed && version == _imageCacheSizeVersion) ImageCacheSize = Core.StorageSize.Format(bytes);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ObjectDisposedException)
+        { if (!_disposed && version == _imageCacheSizeVersion) ImageCacheSize = "暂时无法读取"; }
+    }
     internal Task ImageCompatibilityUpdate { get; private set; } = Task.CompletedTask;
     [ObservableProperty] public partial bool ImageCompatibilityMode { get; set; }
     [ObservableProperty]
@@ -26,7 +39,7 @@ public partial class PlayerViewModel
         IsUpdatingImageCompatibility = true;
         try
         {
-            if (enabled) await ArtworkCache.ClearAsync();
+            if (enabled) { await ArtworkCache.ClearAsync(); await RefreshImageCacheSizeAsync(); }
             if (_disposed || version != _imageSettingsVersion) return;
             ReloadArtwork();
         }

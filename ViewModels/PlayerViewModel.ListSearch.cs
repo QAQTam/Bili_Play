@@ -7,10 +7,13 @@ namespace BiliPlay.ViewModels;
 
 public partial class PlayerViewModel
 {
-    [ObservableProperty] public partial string ListSearchText { get; set; } = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ListSearchLabel))]
+    public partial string ListSearchText { get; set; } = "";
     [ObservableProperty] public partial bool IsListSearching { get; set; }
     [ObservableProperty] public partial string ListSearchStatus { get; set; } = "";
     public bool CanSearchWithinList => IsFolderView || IsSpaceView || IsPlaylistView;
+    public string ListSearchLabel => "搜索";
     public string ListSearchPlaceholder => IsFolderView ? "搜索此收藏夹的歌曲、UP 主或 BV 号"
         : IsSpaceView ? "搜索此空间的作品、标题或 BV 号" : "搜索播放列表";
     public ObservableCollection<Track> PlaylistTracks { get; } = [];
@@ -41,7 +44,7 @@ public partial class PlayerViewModel
     private void RefreshPlaylistSearch()
     {
         Replace(PlaylistTracks, Queue.Where(track => TrackSearch.Matches(track, ListSearchText)));
-        if (IsPlaylistView) { IsEmpty = PlaylistTracks.Count == 0; EmptyText = ListSearchText.Length > 0 ? "播放列表中没有匹配的音乐。" : "播放列表为空。"; }
+        if (IsPlaylistView) { IsEmpty = PlaylistTracks.Count == 0; EmptyText = ListSearchText.Length > 0 ? "没有找到匹配的内容。" : "播放列表为空。"; }
         OnPropertyChanged(nameof(HasTracks));
     }
     private void ResetListSearch()
@@ -100,7 +103,7 @@ public partial class PlayerViewModel
                 Tracks.Add(result[index]);
                 if (index % 12 == 11) await Task.Yield();
             }
-            IsEmpty = Tracks.Count == 0; EmptyText = "没有找到匹配的内容，试试其他关键词。";
+            IsEmpty = Tracks.Count == 0; EmptyText = "没有找到匹配的内容。";
             ListSearchStatus = $"找到 {Tracks.Count} 首音乐";
         }
         catch (OperationCanceledException) when (load.IsCancellationRequested) { }

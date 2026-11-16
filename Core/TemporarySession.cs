@@ -24,7 +24,20 @@ public sealed class TemporarySession : IDisposable
         if(!Guid.TryParseExact(Path.GetFileName(path),"N",out _)||!File.Exists(Path.Combine(path,".biliplay-demo")))return;
         foreach(var item in new DirectoryInfo(path).EnumerateFileSystemInfos("*",SearchOption.AllDirectories))
             if((item.Attributes&FileAttributes.ReparsePoint)!=0)throw new IOException("调试目录包含链接，停止清理。");
-        Directory.Delete(path,true);
+        // Keep the ownership marker until all other contents are gone. A recursive
+        // delete may remove it first and then hit a sharing violation, preventing
+        // the next retry (or crash recovery) from recognizing the remaining data.
+        var marker = Path.Combine(path, ".biliplay-demo");
+        foreach (var directory in Directory.EnumerateDirectories(path)) Directory.Delete(directory, true);
+        foreach (var file in Directory.EnumerateFiles(path))
+            if (!string.Equals(file, marker, StringComparison.OrdinalIgnoreCase)) File.Delete(file);
+        File.Delete(marker);
+        try { Directory.Delete(path); }
+        catch (IOException)
+        {
+            if (Directory.Exists(path)) { EnsureSafe(path); File.WriteAllText(marker, ""); }
+            throw;
+        }
     }
     public static void CleanAbandoned(string parent)
     {

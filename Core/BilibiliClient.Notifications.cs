@@ -162,7 +162,7 @@ public sealed partial class BilibiliClient
         return new(category, title, content, FormatNotificationTime(stamp, time), avatars.FirstOrDefault() ?? "", url,
             source == "like", image, targetText, kind, count, avatars, action,
             key + ":" + (id.Length > 0 ? id : title + ":" + time), stamp,
-            source == "session" ? row.N("talker_id") : 0, source == "session" && row.N("session_type") > 0 ? (int)row.N("session_type") : 1);
+            source == "session" ? row.N("talker_id") : 0, source == "session" && row.N("session_type") > 0 ? (int)row.N("session_type") : 1, source == "session" && row.N("system_msg_type") == 0);
     }
 
     private static string NotificationImage(string value)

@@ -1264,9 +1264,9 @@ Test("Audio quality preference survives ordinary tracks and respects permissions
 });
 Test("Global shortcuts validate reserved keys and round trip custom bindings",()=>
 {
- True(HotkeyBinding.Defaults.All(binding=>binding.IsValid));Equal(3,HotkeyBinding.Defaults.Distinct().Count());
+ Equal("Ctrl + ←",HotkeyBinding.Defaults[0].Label);Equal("Ctrl + →",HotkeyBinding.Defaults[1].Label);Equal("Ctrl + P",HotkeyBinding.Defaults[2].Label);True(HotkeyBinding.Defaults.All(binding=>binding.IsValid));Equal(3,HotkeyBinding.Defaults.Distinct().Count());
  var custom=new HotkeyBinding(6,0x4D);True(custom.IsValid);Equal(custom,HotkeyBinding.Parse(custom.ToString(),HotkeyBinding.Defaults[0]));
- True(!new HotkeyBinding(0,0x20).IsValid);True(!new HotkeyBinding(8,0x41).IsValid);True(!new HotkeyBinding(3,0x7B).IsValid);
+ True(new HotkeyBinding(0,0x20).IsValid);True(new HotkeyBinding(0,0x77).IsValid);True(new HotkeyBinding(4,0x77).IsValid);True(new HotkeyBinding(0,0x87).IsValid);Equal("Shift + F8",new HotkeyBinding(4,0x77).Label);True(!new HotkeyBinding(8,0x41).IsValid);True(!new HotkeyBinding(3,0x7B).IsValid);
  True(!new HotkeyBinding(3,0x2E).IsValid);Equal(HotkeyBinding.Defaults[0],HotkeyBinding.Parse("invalid",HotkeyBinding.Defaults[0]));
 });
 
@@ -1296,6 +1296,160 @@ tests.Add(("User cards bound batches, validate identities and tolerate malformed
  var cards=await client.GetUserCardsAsync(Enumerable.Range(1,51).Select(id=>(long)id).ToArray());Equal(2,calls);Equal(0,cards.Count);
 }));
 
+tests.Add(("Comment images parse on roots and replies and reject unsafe URLs",async()=>
+{
+ using var client=new BilibiliClient(new Handler(request=>request.RequestUri!.AbsolutePath.EndsWith("/nav")?Json(account):Json("""{"code":0,"data":{"page":{"count":1},"replies":[{"rpid":42,"member":{"mid":123,"uname":"合成用户"},"content":{"message":"图片评论","pictures":[{"img_src":"http://i0.hdslb.com/bfs/new_dyn/synthetic.png","img_width":96,"img_height":64,"img_size":1.25},{"img_src":"https://i0.hdslb.com/bfs/new_dyn/synthetic.png","img_width":96,"img_height":64},{"img_src":"https://i0.hdslb.com.evil.test/bfs/secret.png"},{"img_src":"file:///private.png"},{"img_src":"https://user:pass@i0.hdslb.com/bfs/secret.png"}]}}]}}""")));
+ client.RestoreCachedAccount(new(123,"合成用户",""));
+ var roots=await client.GetCommentsAsync(71,CommentSort.Hot);var image=roots.Items.Single().Pictures!.Single();
+ Equal("https://i0.hdslb.com/bfs/new_dyn/synthetic.png",image.Url);Equal(96,image.Width);Equal(64,image.Height);Equal(1.25,image.SizeKb);
+ Equal(image.Url,(await client.GetCommentRepliesAsync(71,42)).Items.Single().Pictures!.Single().Url);
+ True(!CommentPicture.TryUrl("https://127.0.0.1/bfs/local.png",out _));True(!CommentPicture.TryUrl("https://i0.hdslb.com:8443/bfs/private.png",out _));
+}));
+tests.Add(("Comment image upload uses sanitized multipart bytes and sends pictures once with reply target",async()=>
+{
+ var bytes=Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==");
+ var image=new CommentImagePayload(bytes,1,1);image.Validate();var uploads=0;var replies=0;var fail=false;
+ using var client=new BilibiliClient(new Handler(async request=>
+ {
+  if(request.Method==HttpMethod.Get)return Json(account);
+  if(request.RequestUri!.AbsolutePath.EndsWith("upload_bfs"))
+  {
+   uploads++;Equal("https",request.RequestUri.Scheme);Equal("api.bilibili.com",request.RequestUri.Host);
+   var form=((MultipartFormDataContent)request.Content!).ToDictionary(part=>part.Headers.ContentDisposition!.Name!.Trim('"'));
+   Equal("test-csrf",await form["csrf"].ReadAsStringAsync());Equal("daily",await form["category"].ReadAsStringAsync());Equal("new_dyn",await form["biz"].ReadAsStringAsync());
+   Equal("comment.png",form["file_up"].Headers.ContentDisposition!.FileName!.Trim('"'));Equal("image/png",form["file_up"].Headers.ContentType!.MediaType!);True((await form["file_up"].ReadAsByteArrayAsync()).SequenceEqual(bytes));
+   if(fail)throw new HttpRequestException("synthetic uncertain upload");
+   return Json("""{"code":0,"data":{"image_url":"http://i0.hdslb.com/bfs/new_dyn/synthetic.png","image_width":1,"image_height":1}}""");
+  }
+  replies++;var fields=Text.ParseQuery((await request.Content!.ReadAsStringAsync()).Replace("+", "%20"));
+  Equal("100",fields["root"]);Equal("101",fields["parent"]);Equal("image comment",fields["message"]);Equal("test-csrf",fields["csrf"]);
+  using var pictures=System.Text.Json.JsonDocument.Parse(fields["pictures"]);var picture=pictures.RootElement.EnumerateArray().Single();Equal(1,picture.GetProperty("img_width").GetInt32());Equal(1,picture.GetProperty("img_height").GetInt32());
+  Equal("https://i0.hdslb.com/bfs/new_dyn/synthetic.png",picture.GetProperty("img_src").GetString()!);
+  return Json("""{"code":0,"data":{"reply":{"rpid":102,"member":{"mid":123},"content":{"message":"image comment"}}}}""");
+ }));
+ client.ImportSession([new("bili_jct","test-csrf",".bilibili.com","/",DateTime.UtcNow.AddDays(1))]);await client.GetAccountAsync();
+ var uploaded=await client.UploadCommentImageAsync(image);Equal(1,uploads);
+ var posted=await client.PostCommentAsync(71,"image comment",root:100,parent:101,pictures:[uploaded]);Equal(1,replies);Equal(uploaded,posted!.Pictures!.Single());
+ await Throws<ArgumentException>(()=>client.PostCommentAsync(71,"image comment",pictures:Enumerable.Repeat(uploaded,10).ToArray()));Equal(1,replies);
+ await Throws<ArgumentException>(()=>client.PostCommentAsync(71," ",pictures:[uploaded]));Equal(1,replies);
+ fail=true;await Throws<HttpRequestException>(()=>client.UploadCommentImageAsync(image));Equal(2,uploads);
+}));
+Test("Comment image payloads reject malformed dimensions, formats and oversized input",()=>
+{
+ void Reject(CommentImagePayload payload){var rejected=false;try{payload.Validate();}catch(InvalidDataException){rejected=true;}True(rejected);}
+ var png=Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==");
+ Reject(new([],1,1));Reject(new(png,2,1));Reject(new(png,1,1,"text/plain"));Reject(new(new byte[CommentImagePayload.MaxBytes+1],1,1));
+ Reject(new([255,216,255,192,0,17],1,1,"image/jpeg"));
+});
+tests.Add(("Comment upload rejects untrusted server URLs and expired sessions without posting comments",async()=>
+{
+ var image=new CommentImagePayload(Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="),1,1);var writes=0;
+ using var client=new BilibiliClient(new Handler(request=>
+ {
+  if(request.Method==HttpMethod.Get)return Json(account);writes++;
+  return Json("""{"code":0,"data":{"image_url":"https://evil.test/bfs/file.png","image_width":1,"image_height":1}}""");
+ }));
+ client.ImportSession([new("bili_jct","test-csrf",".bilibili.com","/",DateTime.UtcNow.AddDays(1))]);client.RestoreCachedAccount(new(123,"合成用户",""));
+ await Throws<InvalidDataException>(()=>client.UploadCommentImageAsync(image));Equal(1,writes);
+ using var expired=new BilibiliClient(new Handler(request=>{if(request.Method==HttpMethod.Post)writes++;return Json("""{"code":0,"data":{"isLogin":false}}""");}));
+ expired.RestoreCachedAccount(new(123,"旧合成账号",""));await Throws<BilibiliException>(()=>expired.UploadCommentImageAsync(image));Equal(1,writes);
+}));
+
+Test("Original comment images fit the viewport without cropping or enlarging small images",()=>
+{
+ Equal((40d,20d),ImageDisplaySize.Fit(40,20,800,600));
+ Equal((800d,400d),ImageDisplaySize.Fit(2400,1200,800,600));
+ Equal((200d,600d),ImageDisplaySize.Fit(1000,3000,800,600));
+ Equal((0d,0d),ImageDisplaySize.Fit(0,20,800,600));
+ Equal("https://i0.hdslb.com/bfs/new_dyn/original.png",new CommentPicture("https://i0.hdslb.com/bfs/new_dyn/original.png@320w_320h_1c.jpg",2400,1200).OriginalUrl);
+});
+tests.Add(("Temporary session cleanup retains ownership across locked-file retries", async () =>
+{
+ if (!OperatingSystem.IsWindows()) return;
+ var parent = Path.Combine(Path.GetTempPath(), "biliplay-session-lock-" + Guid.NewGuid().ToString("N"));
+ try
+ {
+  var session = new TemporarySession(parent);
+  var root = session.DirectoryPath;
+  var file = Path.Combine(root, "locked-fixture.bin");
+  await File.WriteAllTextAsync(file, "synthetic fixture");
+  using (var held = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None))
+  {
+   await Throws<IOException>(() => Task.Run(session.Dispose));
+   True(Directory.Exists(root) && File.Exists(Path.Combine(root, ".biliplay-demo")));
+  }
+  TemporarySession.CleanAbandoned(parent); True(!Directory.Exists(root));
+  using var transient = new TemporarySession(parent);
+  var transientFile = Path.Combine(transient.DirectoryPath, "transient-fixture.bin");
+  await File.WriteAllTextAsync(transientFile, "synthetic fixture");
+  var transientLock = new FileStream(transientFile, FileMode.Open, FileAccess.Read, FileShare.None);
+  var release = Task.Run(async () => { await Task.Delay(75); transientLock.Dispose(); });
+  try { await Task.Run(transient.Dispose); } finally { await release; }
+  True(!Directory.Exists(transient.DirectoryPath));
+ }
+ finally { if (Directory.Exists(parent)) Directory.Delete(parent, true); }
+}));
+
+Test("Storage sizes select units and round boundaries", () =>
+{
+ Equal("0 B", StorageSize.Format(0)); Equal("1023 B", StorageSize.Format(1023));
+ Equal("1 KB", StorageSize.Format(1024)); Equal("1 MB", StorageSize.Format(1024 * 1024 - 1));
+ Equal("2 GB", StorageSize.Format(2L * 1024 * 1024 * 1024));
+});
+tests.Add(("Artwork size counts only owned cache files and reflects clearing", async () =>
+{
+ var folder = Path.Combine(Path.GetTempPath(), "biliplay-cache-size-" + Guid.NewGuid().ToString("N"));
+ try
+ {
+  using var cache = new ImageDiskCache(folder);
+  Equal(0L, await cache.GetSizeAsync()); True(!Directory.Exists(folder));
+  Directory.CreateDirectory(folder);
+  await File.WriteAllBytesAsync(Path.Combine(folder, new string('a', 64) + ".img"), new byte[2048]);
+  await File.WriteAllBytesAsync(Path.Combine(folder, new string('b', 64) + ".img.part"), new byte[1024]);
+  await File.WriteAllBytesAsync(Path.Combine(folder, "unrelated.img"), new byte[4096]);
+  Equal(3072L, await cache.GetSizeAsync());
+  await cache.ClearAsync(); Equal(0L, await cache.GetSizeAsync()); True(File.Exists(Path.Combine(folder, "unrelated.img")));
+ }
+ finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+}));
+tests.Add(("Private message writes use signed official endpoint, exact recipient and CSRF without retry", async () =>
+{
+ var writes=0; var fail=false;
+ using var client=new BilibiliClient(new Handler(async request=>
+ {
+  if(request.Method==HttpMethod.Get)return Json(account);
+  writes++;Equal("api.vc.bilibili.com",request.RequestUri!.Host);True(request.RequestUri.AbsolutePath.EndsWith("/web_im/v1/web_im/send_msg"));
+  var query=Text.ParseQuery(request.RequestUri.Query);True(query.ContainsKey("w_rid"));Equal("42",query["w_receiver_id"]);
+  var form=Text.ParseQuery((await request.Content!.ReadAsStringAsync()).Replace("+"," "));Equal("123",form["msg[sender_uid]"]);Equal("42",form["msg[receiver_id]"]);Equal("1",form["msg[receiver_type]"]);Equal("synthetic-csrf",form["csrf"]);
+  using var body=System.Text.Json.JsonDocument.Parse(form["msg[content]"]);Equal("合成 <消息> & 原文",body.RootElement.GetProperty("content").GetString());
+  if(fail)throw new HttpRequestException("synthetic uncertain write");return Json("{\"code\":0,\"data\":{}}");
+ }));
+ client.ImportSession([new("bili_jct","synthetic-csrf",".bilibili.com","/",DateTime.UtcNow.AddDays(1))]);client.RestoreCachedAccount(new(123,"合成用户",""));
+ await client.SendMessageAsync(42,"合成 <消息> & 原文");Equal(1,writes);
+ fail=true;await Throws<HttpRequestException>(()=>client.SendMessageAsync(42,"合成 <消息> & 原文"));Equal(2,writes);
+ await Throws<ArgumentException>(()=>client.SendMessageAsync(123,"self"));Equal(2,writes);
+}));
+tests.Add(("Cloud notification deletion targets each feed and never retries or deletes unsupported system notices", async () =>
+{
+ var writes=0;var fail=false;
+ using var client=new BilibiliClient(new Handler(async request=>
+ {
+  if(request.Method==HttpMethod.Get)return Json(account);
+  writes++;var fields=Text.ParseQuery(await request.Content!.ReadAsStringAsync());Equal("synthetic-csrf",fields["csrf"]);
+  if(request.RequestUri!.Host=="api.vc.bilibili.com") {True(request.RequestUri.AbsolutePath.EndsWith("/remove_session"));Equal("synthetic-csrf",fields["csrf_token"]);Equal("42",fields["talker_id"]);Equal("1",fields["session_type"]);}
+  else {Equal("/x/msgfeed/del",request.RequestUri.AbsolutePath);Equal((int.Parse(fields["id"])-100).ToString(),fields["tp"]);}
+  if(fail)throw new HttpRequestException("synthetic uncertain deletion");return Json("{\"code\":0,\"data\":{}}");
+ }));
+ client.ImportSession([new("bili_jct","synthetic-csrf",".bilibili.com","/",DateTime.UtcNow.AddDays(1))]);client.RestoreCachedAccount(new(123,"合成用户",""));
+ await client.DeleteNotificationAsync(new("私信","合成会话","","",TalkerId:42,CanReply:false));
+ foreach(var row in new[]{("like:100",true),("reply:101",false),("at:102",false)})
+ {
+  await client.DeleteNotificationAsync(new("回复与@","合成通知","","",Id:row.Item1,IsLike:row.Item2));
+ }
+ Equal(4,writes);
+ await Throws<NotSupportedException>(()=>client.DeleteNotificationAsync(new("系统通知","合成系统通知","","",Id:"system:1")));Equal(4,writes);
+ fail=true;await Throws<HttpRequestException>(()=>client.DeleteNotificationAsync(new("私信","合成会话","","",TalkerId:42)));Equal(5,writes);
+}));
 var failures = 0;
 foreach(var test in tests)
 {

@@ -56,18 +56,20 @@ public partial class PlayerViewModel
     [NotifyPropertyChangedFor(nameof(CommentsTitle))]
     public partial long CommentsTotal { get; set; }
     public string CommentsTitle => CommentsTotal > 0 ? $"评论 {CommentsTotal:N0}" : "评论";
-    public bool CanSendComment => ShowComments && IsLoggedIn && !NeedsLogin && HasCurrentTrack && !IsCommentsLoading && !IsPostingComment && !string.IsNullOrWhiteSpace(CommentDraft);
+    public bool CanSendComment => ShowComments && IsLoggedIn && !NeedsLogin && HasCurrentTrack && !IsCommentsLoading && !IsPostingComment && !IsPreparingCommentImages && !string.IsNullOrWhiteSpace(CommentDraft);
     public bool CanRefreshComments => ShowComments && !IsCommentsLoading && !IsPostingComment;
     public bool CanEditComment => IsLoggedIn && !NeedsLogin && HasCurrentTrack && !IsPostingComment;
 
     private void UpdateCommentAvailability()
     {
         OnPropertyChanged(nameof(CanSendComment)); OnPropertyChanged(nameof(CanEditComment)); OnPropertyChanged(nameof(CanRefreshComments));
+        OnPropertyChanged(nameof(CanAddCommentImages)); OnPropertyChanged(nameof(CanRemoveCommentImages));
         RefreshCommentsCommand.NotifyCanExecuteChanged();
         SendCommentCommand.NotifyCanExecuteChanged();
     }
     private void InitializeComments()
     {
+        InitializeCommentImages();
         Comments.CanLoadMore = () => ShowComments && _commentsMore && !IsCommentsLoading;
         Comments.FetchPage = token => LoadCommentsAsync(false,false,token);
         _commentsTimer.Tick += async (_, _) =>
@@ -99,7 +101,7 @@ public partial class PlayerViewModel
     {
         if (!value)
         {
-            ShowComments = false; _commentsPost?.Cancel(); _commentDrafts.Clear();
+            ShowComments = false; _commentsPost?.Cancel(); _commentDrafts.Clear(); ClearCommentImageDrafts();
             CommentReplyTarget = null; _commentsContext = ""; _commentsTarget = null; Comments.Clear(); CommentDraft = "";
             _emotesAccount=0; CommentEmotePackages.Clear();
         }
@@ -127,6 +129,7 @@ public partial class PlayerViewModel
         if (_commentsContext == key) { if (track.Aid > 0) _commentsTarget = track; return false; }
         CommentReplyTarget = null;
         CancelCommentsRead(); CancelCommentThreads(); _commentsContext = key; _commentsTarget = track;
+        RestoreCommentImages(key);
         Comments.Clear(); CommentsTotal = 0; CommentsStatus = "";
         CommentDraft = _commentDrafts.GetValueOrDefault(key, "");
         _commentsNextPage = 1; _commentsMore = false; Comments.ResetLoading();
@@ -215,22 +218,44 @@ public partial class PlayerViewModel
     {
         if (!CanSendComment || _commentsTarget is not { } track || Client.Account is not { } account) return;
         var message = CommentDraft.Trim(); var context = _commentsContext; var replying = CommentReplyTarget;
+        var images = CommentImages.ToArray(); var pictures = new List<CommentPicture>(); var commentSubmitted = false;
         var rootId = replying?.RootId ?? 0; var parentId = replying?.Id ?? 0;
         using var post = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        post.CancelAfter(TimeSpan.FromSeconds(20)); _commentsPost = post; IsPostingComment = true;
+        post.CancelAfter(TimeSpan.FromMinutes(3)); _commentsPost = post; IsPostingComment = true;
         try
         {
             var target=await ResolveCommentTargetAsync(track,post.Token);
+            foreach (var image in images)
+            {
+                post.Token.ThrowIfCancellationRequested();
+                if (_disposed || Client.Account?.Id != account.Id) return;
+                if (_commentsContext == context) CommentSendStatus = $"正在上传图片 {pictures.Count + 1}/{images.Length}…";
+                if (image.Uploaded is null)
+                {
 #if VISUAL_CHECKS
-            var posted=await (replying is not null && CommentReplySender is not null ? CommentReplySender(target,message,rootId,parentId,post.Token) : CommentSender is null?Client.PostCommentAsync(target.Aid,message,post.Token,rootId,parentId):CommentSender(target,message,post.Token));
+                    image.Uploaded = await (CommentImageUploader is null ? Client.UploadCommentImageAsync(image.Image, post.Token) : CommentImageUploader(image.Image, post.Token));
 #else
-            var posted=await Client.PostCommentAsync(target.Aid,message,post.Token,rootId,parentId);
+                    image.Uploaded = await Client.UploadCommentImageAsync(image.Image, post.Token);
+#endif
+                }
+                pictures.Add(image.Uploaded);
+            }
+            post.Token.ThrowIfCancellationRequested();
+            if (_disposed || Client.Account?.Id != account.Id) return;
+            if (_commentsContext == context) CommentSendStatus = "正在发送评论…";
+            commentSubmitted = true;
+#if VISUAL_CHECKS
+            var posted=await (pictures.Count > 0 && CommentPictureSender is not null ? CommentPictureSender(target,message,rootId,parentId,pictures,post.Token)
+                : replying is not null && CommentReplySender is not null ? CommentReplySender(target,message,rootId,parentId,post.Token) : CommentSender is null?Client.PostCommentAsync(target.Aid,message,post.Token,rootId,parentId,pictures):CommentSender(target,message,post.Token));
+#else
+            var posted=await Client.PostCommentAsync(target.Aid,message,post.Token,rootId,parentId,pictures);
 #endif
             if (_disposed || Client.Account?.Id != account.Id) return;
             _commentDrafts.Remove(context);
+            _commentImageDrafts.Remove(context);
             if (_commentsContext == context)
             {
-                CommentDraft = ""; CommentReplyTarget = null;
+                CommentDraft = ""; CommentReplyTarget = null; CommentImages.Clear();
                 if (posted is not null)
                 {
                     if (rootId > 0 && Comments.FirstOrDefault(item=>item.Id==rootId) is { } root)
@@ -250,9 +275,9 @@ public partial class PlayerViewModel
             if (_disposed || Client.Account?.Id != account.Id) return;
             if (error is BilibiliException { RequiresLogin:true }) NeedsLogin = true;
             Notify(error is OperationCanceledException or HttpRequestException
-                ? "评论提交结果尚未确认，请刷新评论核对后再试。" : error.Message,NoticeLevel.Warn);
+                ? commentSubmitted ? "评论提交结果尚未确认，请刷新评论核对后再试。" : "图片上传未完成，文字和图片已保留，可重试。" : error.Message,NoticeLevel.Warn);
         }
-        finally { if (ReferenceEquals(_commentsPost,post)) _commentsPost = null; IsPostingComment = false; }
+        finally { if (ReferenceEquals(_commentsPost,post)) _commentsPost = null; IsPostingComment = false; if (_commentsContext == context) CommentSendStatus = ""; }
     }
     private void CancelCommentThreads()
     {
@@ -350,5 +375,5 @@ public partial class PlayerViewModel
         finally { if(ReferenceEquals(_emotesLoad,load)) _emotesLoad=null; IsEmotesLoading=false; }
     }
     private void DisposeComments()
-    { _commentsTimer.Stop(); CancelCommentsRead(); _commentsPost?.Cancel(); _emotesLoad?.Cancel(); _commentThreads.Cancel(); _commentThreads.Dispose(); }
+    { _commentsTimer.Stop(); CancelCommentsRead(); _commentsPost?.Cancel(); _emotesLoad?.Cancel(); _commentThreads.Cancel(); _commentThreads.Dispose(); ClearCommentImageDrafts(); }
 }

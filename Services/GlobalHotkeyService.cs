@@ -22,7 +22,7 @@ public sealed class GlobalHotkeyService : IDisposable
         if (_disposed) return "全局快捷键已停止。";
         if (!enabled) { Clear(); return null; }
         if (bindings.Count != 3 || bindings.Any(binding => !binding.IsValid) || bindings.Distinct().Count() != 3)
-            return "快捷键需包含 Ctrl 或 Alt，且三个操作不能使用相同组合。";
+            return "请选择有效按键，三个操作不能使用相同快捷键。";
         var previous = _registered.ToArray();
         Clear();
         for (var index = 0; index < bindings.Count; index++)

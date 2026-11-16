@@ -79,6 +79,12 @@ public static class ArtworkCache
         catch(Exception e) when(e is System.Runtime.InteropServices.COMException or ArgumentException) { }
     }
     public static void ResetScope() { _formatVersion++; Memory.Clear(); Avatars.Clear(); Sources.Clear(); _clearing=Task.CompletedTask; if(Cache.IsValueCreated)Cache.Value.Dispose(); Cache=NewCache(); }
+    public static async Task<long> GetSizeAsync()
+    {
+        var cache = Cache.Value;
+        await _clearing;
+        return await Task.Run(() => cache.GetSizeAsync());
+    }
     public static Task ClearAsync()
     {
         _formatVersion++; Memory.Clear(); Avatars.Clear();

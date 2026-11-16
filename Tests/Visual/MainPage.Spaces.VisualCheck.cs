@@ -89,13 +89,32 @@ public sealed partial class MainPage
         finally { ViewModel.SpaceProfile=profile; App.Window.AppWindow.Resize(windowSize); await Task.Delay(100); }
         var notification = new AccountNotification("私信", "离线私信", "", "", "https://i0.hdslb.com/dm-avatar.jpg", TalkerId:42);
         ViewModel.Client.RestoreCachedAccount(new(123, "离线布局验证", "https://i0.hdslb.com/self-avatar.jpg"));
+        ViewModel.AccountNotifications.Clear(); ViewModel.AccountNotifications.Add(notification);
+        ViewModel.NotificationCategoryIndex = 1; ViewModel.NotificationCategoryIndex = 0; ViewModel.Navigate("notifications");
         var conversation = ShowConversationAsync(notification, (before, token) => Task.FromResult(new ConversationPage([
             new("one",42,"对话中的 <原文> 不应丢失 https://www.bilibili.com/video/BV1xx411c7mD","",1,"2026-11-09 12:00",false),
             new("two",123,"自己的消息","",2,"2026-11-09 12:01",true)],false,1)));
-        await Task.Delay(180);
-        var dialog = VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).Select(popup => FindVisual<ContentDialog>(popup.Child)).FirstOrDefault(value=>value is not null);
-        Check(dialog is not null && FindVisual<ListView>(dialog!)?.Items.Count == 2, "点击私信未载入对话");
-        var convoList = FindVisual<ListView>(dialog!)!;
+        await Task.Delay(450);
+        await conversation; UpdateLayout();
+        Check(ConversationList.Visibility == Visibility.Visible && ConversationList.Items.Count == 2, "点击私信未载入内嵌对话");
+        Check(ReferenceEquals(NotificationList.SelectedItem, notification) && ConversationPlaceholder.Visibility == Visibility.Collapsed, "打开聊天后丢失选中状态或仍显示空白提示");
+        void CheckChatBottom()
+        {
+            var bottom = NotificationWorkspace.TransformToVisual(NotificationsPanel).TransformPoint(new(0, NotificationWorkspace.ActualHeight)).Y;
+            Check(NotificationStatusText.Visibility == Visibility.Collapsed && Math.Abs(NotificationsPanel.ActualHeight - bottom) < 1,
+                "展开聊天后，隐藏的通知状态行仍在底部保留空白");
+        }
+        var notificationStatus = ViewModel.NotificationsStatus;
+        ViewModel.IsNotificationsLoading = false; ViewModel.NotificationsStatus = ""; UpdateLayout();
+        CheckChatBottom();
+        ViewModel.NotificationsStatus = "合成通知状态"; UpdateLayout();
+        var statusTop = NotificationStatusText.TransformToVisual(NotificationsPanel).TransformPoint(new(0, 0)).Y;
+        var chatBottom = NotificationWorkspace.TransformToVisual(NotificationsPanel).TransformPoint(new(0, NotificationWorkspace.ActualHeight)).Y;
+        Check(NotificationStatusText.Visibility == Visibility.Visible && Math.Abs(statusTop - chatBottom - 12) < 1,
+            "可见通知提示与聊天内容重叠或间距异常");
+        ViewModel.NotificationsStatus = ""; UpdateLayout(); CheckChatBottom();
+        Check(NotificationList.Items.Count == 1 && NotificationList.ContainerFromIndex(0) is not null, "私信会话列表未显示");
+        var convoList = ConversationList;
         var other = convoList.ContainerFromIndex(0) as DependencyObject;
         var own = convoList.ContainerFromIndex(1) as DependencyObject;
         Check(other is not null && FindVisual<PersonPicture>(other)?.ProfilePicture is not null, "对方消息气泡缺少头像");
@@ -103,13 +122,23 @@ public sealed partial class MainPage
             && rich.Blocks[0] is Microsoft.UI.Xaml.Documents.Paragraph para && para.Inlines.OfType<Microsoft.UI.Xaml.Documents.Hyperlink>().Any(link => link.Inlines.OfType<Microsoft.UI.Xaml.Documents.Run>().Any(run => run.Text.Contains("https://www.bilibili.com/video/BV1xx411c7mD"))), "私信链接没有渲染为显示真实地址的可点击超链接");
         Check(own is not null && FindVisual<PersonPicture>(own)?.ProfilePicture is not null, "自己的消息气泡缺少头像"); Check(convoList.Items[0] is DirectMessage { SenderLabel: "离线私信" } && convoList.Items[1] is DirectMessage { SenderLabel: "我" }, "私信气泡没有显示会话真实用户名");
         await SaveVisualAsync(Path.Combine(directory, "private-conversation.png"));
-        dialog!.Hide(); await conversation;
-        Check(!_conversationOpen, "关闭私信后会话没有释放");
+        CloseConversation(); Check(_conversationLifetime is null, "关闭私信后会话没有释放");
         var pending = ShowConversationAsync(notification, async (_, token) => { await Task.Delay(10000, token); return new([],false,0); });
         await Task.Delay(80);
-        dialog = VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).Select(popup=>FindVisual<ContentDialog>(popup.Child)).FirstOrDefault(value=>value is not null);
-        Check(dialog is not null, "加载期间没有显示私信窗口"); dialog!.Hide();
-        await pending.WaitAsync(TimeSpan.FromSeconds(2)); Check(!_conversationOpen, "取消私信加载未终止请求");
+        Check(ConversationLoading.IsActive, "加载期间没有显示私信进度");
+        var replacement = notification with { Title = "合成新会话", TalkerId = 43 };
+        await ShowConversationAsync(replacement, (_, _) => Task.FromResult(new ConversationPage([new("new",43,"较新的会话","",1,"",false)],false,1)));
+        await pending.WaitAsync(TimeSpan.FromSeconds(2));
+        Check(ConversationTitle.Text == "合成新会话" && ConversationList.Items.Count == 1 && !ConversationLoading.IsActive, "快速切换会话后旧请求覆盖新消息或留下加载状态");
+        var size = App.Window.AppWindow.Size;
+        try
+        {
+            App.Window.AppWindow.Resize(new((int)(840 * XamlRoot.RasterizationScale), (int)(820 * XamlRoot.RasterizationScale)));
+            await Task.Delay(100); UpdateLayout();
+            Check(ConversationPane.Visibility == Visibility.Visible && NotificationListPane.Visibility == Visibility.Collapsed && ConversationBack.Visibility == Visibility.Visible, "窄窗口没有切换为聊天详情与返回按钮");
+            ViewModel.NotificationsStatus = ""; UpdateLayout(); CheckChatBottom();
+        }
+        finally { App.Window.AppWindow.Resize(size); ViewModel.NotificationsStatus = notificationStatus; }
         ViewModel.Navigate("home");
     }
 

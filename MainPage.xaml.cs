@@ -94,7 +94,7 @@ public sealed partial class MainPage : Page
         ViewModel.PropertyChanged += OnViewModelChanged;
         ActualThemeChanged += (_, _) => { _ = RefreshAtmosphereAsync(); };
         _resumeLyricsTimer.Tick += (_, _) => ResumeLyricFollowing();
-        Unloaded += (_, _) => { CancelPendingTrackClick(); _resumeLyricsTimer.Stop(); CancelCoverFlight(); _lyricsTransitionWait?.Cancel(); _lyricsTransitionWait=null; _ambientLoad?.Cancel(); };
+        Unloaded += (_, _) => { ListSearchFlyout.Hide(); _hotkeyDialog?.Hide(); CloseConversation(); CancelPendingTrackClick(); _resumeLyricsTimer.Stop(); CancelCoverFlight(); _lyricsTransitionWait?.Cancel(); _lyricsTransitionWait=null; _ambientLoad?.Cancel(); };
         ViewModel.BrowseChanged += QueueBrowseEntrance;
         SeekSlider.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => ViewModel.IsSeeking = true), true);
         SeekSlider.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => CommitSeek()), true);
@@ -144,7 +144,8 @@ public sealed partial class MainPage : Page
     }
     private void NotificationViewportSizeChanged(object sender, SizeChangedEventArgs args)
     {
-        if (NotificationsPanel is not null) NotificationsPanel.Width = Math.Max(0, Math.Min(860, args.NewSize.Width - 56));
+        if (NotificationsPanel is not null) NotificationsPanel.Width = Math.Max(0, args.NewSize.Width - 56);
+        UpdateNotificationLayout();
     }
     private void PlayerBarSizeChanged(object sender, SizeChangedEventArgs args) => ViewModel.PlayerBarHeight = args.NewSize.Height;
     private void CloseCommentsClick(object sender, RoutedEventArgs args) => ViewModel.ShowComments = false;
@@ -227,6 +228,14 @@ public sealed partial class MainPage : Page
     }
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(ViewModel.IsTrackSelectionMode)) UpdateTrackSelectionPresentation();
+        if (_conversationLifetime is not null && ViewModel.Client.Account?.Id != _conversationAccount) CloseConversation();
+        if (e.PropertyName == nameof(ViewModel.NotificationCategoryIndex)
+            || e.PropertyName == nameof(ViewModel.IsNotificationsView) && !ViewModel.IsNotificationsView
+            || e.PropertyName == nameof(ViewModel.IsLoggedIn) && !ViewModel.IsLoggedIn) CloseConversation();
+        if (e.PropertyName == nameof(ViewModel.CanSearchWithinList)) ListSearchFlyout.Hide();
+        if (e.PropertyName == nameof(ViewModel.IsSettingsView) && !ViewModel.IsSettingsView) _hotkeyDialog?.Hide();
+        if (e.PropertyName == nameof(ViewModel.IsSettingsView) && ViewModel.IsSettingsView) _ = ViewModel.RefreshImageCacheSizeAsync();
         if (e.PropertyName is nameof(ViewModel.SingleClickBehaviorIndex) or nameof(ViewModel.DoubleClickBehaviorIndex) or nameof(ViewModel.IsCacheSelectionMode) or nameof(ViewModel.IsLoggedIn)) CancelPendingTrackClick();
         if (e.PropertyName == nameof(ViewModel.ShowComments) && ViewModel.ShowComments)
             DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () => { if (ViewModel.ShowComments) CommentsCloseButton.Focus(FocusState.Programmatic); });
@@ -331,7 +340,7 @@ public sealed partial class MainPage : Page
         ClearImageCacheButton.IsEnabled=false;
         try {await ArtworkCache.ClearAsync();ViewModel.Notify("图片缓存已清除。",NoticeLevel.Info);}
         catch(Exception error) when(error is System.IO.IOException or UnauthorizedAccessException) {ViewModel.Notify("图片缓存暂时无法清除，请稍后重试。",NoticeLevel.Warn);}
-        finally {ClearImageCacheButton.IsEnabled=true;}
+        finally {await ViewModel.RefreshImageCacheSizeAsync();ClearImageCacheButton.IsEnabled=true;}
     }
     private async void CurrentUploaderClick(object sender, RoutedEventArgs e)
     { if (ViewModel.CurrentTrack is { } track) await OpenUploaderAsync(track); }
@@ -453,6 +462,9 @@ public sealed partial class MainPage : Page
         {
             if (node is not FrameworkElement { DataContext: Folder folder } element) continue;
             var menu = new MenuFlyout();
+            var download = new MenuFlyoutItem { Text = "下载全部", Icon = new SymbolIcon(Symbol.Download) };
+            download.Click += async (_, _) => await DownloadEntireFolderAsync(folder);
+            menu.Items.Add(download);
             if (folder.Owned)
             {
                 var edit = new MenuFlyoutItem { Text = "编辑收藏夹", Icon = new SymbolIcon(Symbol.Edit) };
@@ -651,7 +663,7 @@ public sealed partial class MainPage : Page
     private void CachedSelectionChanged(object sender, SelectionChangedEventArgs args)
     {
         ViewModel.SelectedCacheCount = ViewModel.IsCacheSelectionMode ? TrackList.SelectedItems.Count : 0;
-        ViewModel.SelectedFolderTrackCount = ViewModel.IsFolderSelectionMode ? TrackList.SelectedItems.Count : 0;
+        ViewModel.SelectedFolderTrackCount = ViewModel.IsFolderSelectionMode ? SelectedFolderTracks().Length : 0;
     }
     private void SelectAllCachedClick(object sender, RoutedEventArgs args) => TrackList.SelectAll();
     private async void DeleteSelectedCachedClick(object sender, RoutedEventArgs args)

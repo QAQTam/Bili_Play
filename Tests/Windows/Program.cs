@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices.WindowsRuntime;
+using Windows.Graphics.Imaging;
 using BiliPlay.Core;
 using BiliPlay.Services;
 using System.Text;
@@ -246,6 +248,38 @@ using(var client = new BilibiliClient(new SubtitleHandler(() => new HttpResponse
 await DownloadService.DeleteCachedFilesAsync(second);
 Check(!File.Exists(second.LocalFile) && !File.Exists(Path.ChangeExtension(second.LocalFile,".subtitles.json")), "删除音乐未同时删除 MP3 与字幕");
 Console.WriteLine("PASS default cache directory, cancellation during streaming cleans partial files, and cached deletion");
+
+var pictureRoot = Path.Combine(root, "comment-pictures"); Directory.CreateDirectory(pictureRoot);
+var pixels = Enumerable.Repeat(new byte[] { 20, 100, 200, 255 }, 6).SelectMany(pixel => pixel).ToArray();
+foreach (var jpeg in new[] { false, true })
+{
+    var path = Path.Combine(pictureRoot, jpeg ? "private-name-fixture.jpg" : "private-name-fixture.png");
+    File.WriteAllBytes(path, []);
+    var file = await StorageFile.GetFileFromPathAsync(path);
+    using (var output = await file.OpenAsync(FileAccessMode.ReadWrite))
+    {
+        var encoder = await BitmapEncoder.CreateAsync(jpeg ? BitmapEncoder.JpegEncoderId : BitmapEncoder.PngEncoderId, output);
+        encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, 2, 3, 96, 96, pixels);
+        if (jpeg) await encoder.BitmapProperties.SetPropertiesAsync(new BitmapPropertySet
+        {
+            ["/app1/ifd/{ushort=315}"] = new("synthetic-private-author", Windows.Foundation.PropertyType.String),
+            ["/app1/ifd/{ushort=274}"] = new((ushort)6, Windows.Foundation.PropertyType.UInt16)
+        });
+        await encoder.FlushAsync();
+    }
+    var prepared = await CommentImagePreparation.PrepareAsync(file, CancellationToken.None); prepared.Validate();
+    Check(prepared.MediaType == (jpeg ? "image/jpeg" : "image/png"), "图片处理使用了错误的文件格式");
+    Check(prepared.Width == (jpeg ? 3 : 2) && prepared.Height == (jpeg ? 2 : 3), "图片处理没有保留方向或尺寸");
+    Check(!Encoding.UTF8.GetString(prepared.Bytes).Contains("synthetic-private-author"), "图片保留了原始作者元数据");
+    using var random = new MemoryStream(prepared.Bytes).AsRandomAccessStream();
+    var decoder = await BitmapDecoder.CreateAsync(random);
+    Check(decoder.PixelWidth == prepared.Width && decoder.PixelHeight == prepared.Height, "处理后的图片无法正确解码");
+    using var canceled = new CancellationTokenSource(); canceled.Cancel();
+    try { await CommentImagePreparation.PrepareAsync(file, canceled.Token); throw new Exception("取消后仍处理图片"); }
+    catch (OperationCanceledException) { }
+}
+Console.WriteLine("PASS comment images re-encode PNG/JPEG, strip metadata, preserve EXIF orientation and cancel safely");
+
 
 return 0;
 

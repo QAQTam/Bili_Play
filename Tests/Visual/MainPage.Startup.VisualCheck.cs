@@ -148,6 +148,14 @@ public sealed partial class MainPage
             var keep = Path.Combine(imageDirectory, "keep.txt");
             await File.WriteAllTextAsync(oldCache, "old artwork fixture");
             await File.WriteAllTextAsync(keep, "unrelated fixture");
+            await ViewModel.RefreshImageCacheSizeAsync(); UpdateLayout();
+            Check(ImageCacheSizeText.Text == StorageSize.Format(new FileInfo(oldCache).Length), "图片缓存大小没有显示真实占用或计入了无关文件");
+            var pathY = DownloadFolderPath.TransformToVisual(DownloadFolderSetting).TransformPoint(new(0, DownloadFolderPath.ActualHeight / 2)).Y;
+            var buttonY = ChooseCacheFolderButton.TransformToVisual(DownloadFolderSetting).TransformPoint(new(0,0)).Y;
+            var pathBottom = DownloadFolderPath.TransformToVisual(DownloadFolderSetting).TransformPoint(new(0,DownloadFolderPath.ActualHeight)).Y;
+            Check(buttonY >= pathBottom + 6, "选择文件夹按钮没有换行");
+            var editY = EditHotkeysButton.TransformToVisual(GlobalHotkeysSwitch).TransformPoint(new(0,0)).Y;
+            Check(editY >= GlobalHotkeysSwitch.ActualHeight + 6, "编辑快捷键按钮没有换行");
             var before = ArtworkCache.Create(new Uri(Path.Combine(directory,"cover.png")),48);
             var fixture = new Track(71,"BV7xx411c7mD","图片刷新验证","合成用户",new Uri(Path.Combine(directory,"cover.png")).AbsoluteUri,30);
             ViewModel.Tracks.Add(fixture);
@@ -155,6 +163,7 @@ public sealed partial class MainPage
             await ViewModel.ImageCompatibilityUpdate;
             Check(ViewModel.ImageCompatibilityMode && !ArtworkFormats.UseWebp && ViewModel.Store.GetSetting("imageCompatibilityMode", "") == "true", "兼容模式没有立即保存或仍在请求 WebP");
             Check(!File.Exists(oldCache) && File.Exists(keep), "兼容模式没有清理图片缓存或误删了其他文件");
+            Check(ImageCacheSizeText.Text == "0 B", "清理后没有刷新图片缓存占用");
             Check(!ReferenceEquals(before,ArtworkCache.Create(new Uri(Path.Combine(directory,"cover.png")),48))
                 && !ReferenceEquals(fixture,ViewModel.Tracks.Last()) && !ViewModel.IsUpdatingImageCompatibility, "兼容模式未重建图片和模板绑定");
             using (var restored = new PlayerViewModel(new BilibiliClient(new StartupMetadataHandler())))
@@ -165,7 +174,7 @@ public sealed partial class MainPage
             ImageCompatibilitySwitch.IsOn = compatibility;
             await ViewModel.ImageCompatibilityUpdate;
             File.Delete(keep); ViewModel.Tracks.Clear();
-            Check(RecordHistorySwitch.Header as string=="记录历史"&&ViewModel.AppVersion==AboutVersion.Text&&Version.TryParse(AboutVersion.Text,out _),"关于信息版本或记录历史文案不正确");
+            Check(RecordHistorySwitch.Header as string=="记录播放历史"&&ViewModel.AppVersion==AboutVersion.Text&&Version.TryParse(AboutVersion.Text,out _),"关于信息版本或记录历史文案不正确");
             Check(AuthorGitHubLink.NavigateUri.AbsoluteUri=="https://github.com/soda-rx"&&ProjectGitHubLink.NavigateUri.AbsoluteUri=="https://github.com/soda-rx/Bili_Play","关于中的 GitHub 链接不正确");
             Check(ViewAgreementButton.Content as string=="查看用户协议与隐私政策"&&AgreementBody().Content is TextBlock agreement&&agreement.Text==BiliPlay.Services.UserAgreement.Text,"关于下面没有完整协议查看入口");
             var searchPreference=ViewModel.RecordSearchHistory;
