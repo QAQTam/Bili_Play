@@ -1,8 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <OutputType Condition="'$(NativeResolverExe)' == 'true'">Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsAotCompatible>true</IsAotCompatible>
+    <PublishAot Condition="'$(NativeResolverExe)' == 'true'">true</PublishAot>
+    <IlcInstructionSet Condition="'$(NativeResolverExe)' == 'true'">base</IlcInstructionSet>
+    <OptimizationPreference Condition="'$(NativeResolverExe)' == 'true'">Size</OptimizationPreference>
+    <AssemblyName Condition="'$(NativeResolverExe)' == 'true'">BiliPlay.Resolver</AssemblyName>
   </PropertyGroup>
+  <ItemGroup Condition="'$(NativeResolverExe)' != 'true'">
+    <Compile Remove="ResolverProgram.cs" />
+  </ItemGroup>
 </Project>

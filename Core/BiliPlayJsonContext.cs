@@ -14,6 +14,9 @@ namespace BiliPlay.Core;
 [JsonSerializable(typeof(SubtitleLine))]
 [JsonSerializable(typeof(SubtitleLine[]))]
 [JsonSerializable(typeof(PageResult<Track>))]
+[JsonSerializable(typeof(ResolvedMusicTrack))]
+[JsonSerializable(typeof(ResolverRequest))]
+[JsonSerializable(typeof(ResolverResponse))]
 public partial class BiliPlayJsonContext : JsonSerializerContext;
 
 [JsonSerializable(typeof(MessageContentPayload))]
