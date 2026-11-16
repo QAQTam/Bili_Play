@@ -704,11 +704,13 @@ tests.Add(("Preferred searches supplement only matching creator archives and cac
    archiveCalls++; var query=Text.ParseQuery(request.RequestUri.Query);
    var mid=long.Parse(query["mid"]); Equal("Free Loop",query["keyword"]); Equal("3",query["tid"]);
    True(query.ContainsKey("w_rid"));
-   return Json(System.Text.Json.JsonSerializer.Serialize(new {code=0,data=new {list=new {vlist=new[] {
-    new {aid=mid,bvid=$"preferred-{mid}",title="Free Loop",author="UP",mid,pic="//i0.hdslb.com/a.jpg",length="03:00"},
-    new {aid=mid,bvid=$"wrong-query-{mid}",title="Yesterday",author="UP",mid,pic="//i0.hdslb.com/a.jpg",length="03:00"},
-    new {aid=mid,bvid=$"wrong-owner-{mid}",title="Free Loop",author="UP",mid=404L,pic="//i0.hdslb.com/a.jpg",length="03:00"}
-   }},page=new {count=3}}}));
+   return Json($$"""
+    {"code":0,"data":{"list":{"vlist":[
+     {"aid":{{mid}},"bvid":"preferred-{{mid}}","title":"Free Loop","author":"UP","mid":{{mid}},"pic":"//i0.hdslb.com/a.jpg","length":"03:00"},
+     {"aid":{{mid}},"bvid":"wrong-query-{{mid}}","title":"Yesterday","author":"UP","mid":{{mid}},"pic":"//i0.hdslb.com/a.jpg","length":"03:00"},
+     {"aid":{{mid}},"bvid":"wrong-owner-{{mid}}","title":"Free Loop","author":"UP","mid":404,"pic":"//i0.hdslb.com/a.jpg","length":"03:00"}
+    ]},"page":{"count":3} } }
+    """);
   }
   return Json("""{"code":0,"data":{"numPages":2,"result":[{"aid":1,"bvid":"ordinary","title":"Free Loop","author":"Other","mid":1,"duration":"03:00"}]}}""");
  }));
@@ -740,8 +742,8 @@ tests.Add(("Homepage rotates all preferred creators while retaining channel disc
   if(path=="/x/space/wbi/arc/search")
   {
    var mid=long.Parse(Text.ParseQuery(request.RequestUri.Query)["mid"]);
-   return Json(System.Text.Json.JsonSerializer.Serialize(new {code=0,data=new {list=new {vlist=Enumerable.Range(0,30).Select(i=>new {
-    aid=mid+i,bvid=$"preferred-{mid}-{i}",title=$"Song {i}",author="UP",mid,pic="//i0.hdslb.com/a.jpg",length="03:00"})},page=new {count=90}}}));
+   var vlist=string.Join(",",Enumerable.Range(0,30).Select(i=>$$"""{"aid":{{mid+i}},"bvid":"preferred-{{mid}}-{{i}}","title":"Song {{i}}","author":"UP","mid":{{mid}},"pic":"//i0.hdslb.com/a.jpg","length":"03:00"}"""));
+   return Json($$"""{"code":0,"data":{"list":{"vlist":[{{vlist}}]},"page":{"count":90} } }""");
   }
   if(path=="/c/music/") return new(HttpStatusCode.OK) { Content=new StringContent("""<div class="feed-card head-card"><a href="https://www.bilibili.com/video/BV1xx411c7mD"></a><img src="//i0.hdslb.com/a.jpg"><div class="bili-video-card__title" title="频道推荐"></div></div>""",Encoding.UTF8,"text/html") };
   return Json("""{"code":0,"data":{"archives":[{"aid":1,"bvid":"channel","title":"频道发现","cover":"//i0.hdslb.com/a.jpg","author":{"name":"Other","mid":1},"duration":90}]}}""");
@@ -818,8 +820,8 @@ tests.Add(("Comments read hot/latest, pinned deduplication and pagination withou
   Equal("/x/v2/reply",request.RequestUri.AbsolutePath);
   var q=Text.ParseQuery(request.RequestUri.Query); Equal("1",q["type"]);Equal("123",q["oid"]);
   var page=int.Parse(q["pn"]);Equal(page==1?"2":"0",q["sort"]);
-  var rows=Enumerable.Range(page==1?1:21,page==1?20:1).Select(i=>new {rpid=i,member=new {mid=i,uname=$"User {i}",avatar="//i0.hdslb.com/a.jpg"},content=new {message="Literal &lt;tag&gt; &amp; text"},like=3,ctime=1700000000});
-  return Json(System.Text.Json.JsonSerializer.Serialize(new {code=0,data=new {page=new {count=21},top_replies=rows.Take(1),replies=rows}}));
+  var rows=Enumerable.Range(page==1?1:21,page==1?20:1).Select(i=>$$"""{"rpid":{{i}},"member":{"mid":{{i}},"uname":"User {{i}}","avatar":"//i0.hdslb.com/a.jpg"},"content":{"message":"Literal &lt;tag&gt; &amp; text"},"like":3,"ctime":1700000000}""").ToArray();
+  return Json($$"""{"code":0,"data":{"page":{"count":21},"top_replies":[{{rows[0]}}],"replies":[{{string.Join(",",rows)}}] } }""");
  }));
  await client.GetAccountAsync();
  var hot=await client.GetCommentsAsync(123,CommentSort.Hot);Equal(20,hot.Items.Count);True(hot.Items[0].IsPinned);True(hot.HasMore);
@@ -930,7 +932,7 @@ tests.Add(("Background discovery and account verification use one coherent signi
   if(request.RequestUri!.AbsolutePath.EndsWith("/nav"))
   {
    var alternate=Interlocked.Increment(ref nav)%2==0;
-   return Json(System.Text.Json.JsonSerializer.Serialize(new {code=0,data=new {isLogin=true,mid=123,uname="test",wbi_img=new {img_url=$"https://i0.hdslb.com/{(alternate?image:sub)}.png",sub_url=$"https://i0.hdslb.com/{(alternate?sub:image)}.png"}}}));
+   return Json($$"""{"code":0,"data":{"isLogin":true,"mid":123,"uname":"test","wbi_img":{"img_url":"https://i0.hdslb.com/{{(alternate?image:sub)}}.png","sub_url":"https://i0.hdslb.com/{{(alternate?sub:image)}}.png"} } }""");
   }
   var query=Text.ParseQuery(request.RequestUri.Query);var timestamp=long.Parse(query["wts"]);var signature=query["w_rid"];query.Remove("wts");query.Remove("w_rid");
   var a=Text.ParseQuery(WbiSigner.Sign(query,image,sub,timestamp))["w_rid"];var b=Text.ParseQuery(WbiSigner.Sign(query,sub,image,timestamp))["w_rid"];
@@ -1294,6 +1296,124 @@ tests.Add(("User cards bound batches, validate identities and tolerate malformed
  }));
  client.RestoreCachedAccount(new(123,"合成边界验证",""));
  var cards=await client.GetUserCardsAsync(Enumerable.Range(1,51).Select(id=>(long)id).ToArray());Equal(2,calls);Equal(0,cards.Count);
+}));
+Test("Video page JSON slicer handles escaped braces inside strings and ignores trailing megabytes",()=>
+{
+ var tail=new string('x',1024*1024);
+ var html="<script>window.__INITIAL_STATE__ = {\"videoData\":{\"title\":\"Brace } and \\\"escaped }\\\" {ok}\",\"path\":\"C:\\\\\\\\music\\\\\",\"nested\":{\"a\":{\"b\":1}},\"aid\":42}};window.other={broken</script>"+tail;
+ _=VideoPage.ReadJson(html,"__INITIAL_STATE__");
+ var before=GC.GetAllocatedBytesForCurrentThread();
+ var root=VideoPage.ReadJson(html,"__INITIAL_STATE__");
+ var allocated=GC.GetAllocatedBytesForCurrentThread()-before;
+ True(allocated<32*1024);
+ Equal("Brace } and \"escaped }\" {ok}",root.GetProperty("videoData").GetProperty("title").GetString());
+ Equal("C:\\\\music\\",root.GetProperty("videoData").GetProperty("path").GetString());
+ Equal(42L,root.GetProperty("videoData").GetProperty("aid").GetInt64());
+ var unbalanced="<script>window.__INITIAL_STATE__ = {\"videoData\":{\"title\":\"unclosed\"</script>";
+ try { _=VideoPage.ReadJson(unbalanced,"__INITIAL_STATE__"); throw new Exception("Expected JsonException"); }
+ catch(System.Text.Json.JsonException) { }
+});
+Test("Source-generated BiliPlayJsonContext preserves schema compatibility and case-insensitive input",()=>
+{
+ var track=new Track(10,"BV1xx411c7mD","测试歌曲","歌手","https://i0.hdslb.com/a.jpg",215,999,2,"Part 2",3,777,"C:\\cache\\a.mp3");
+ var trackJson=System.Text.Json.JsonSerializer.Serialize(new[]{track},BiliPlayJsonContext.Default.TrackArray);
+ True(trackJson.Contains("\"Bvid\":\"BV1xx411c7mD\"",StringComparison.Ordinal)&&trackJson.Contains("\"Cid\":999",StringComparison.Ordinal));
+ var roundTrip=System.Text.Json.JsonSerializer.Deserialize(trackJson,BiliPlayJsonContext.Default.TrackArray)!;
+ Equal(1,roundTrip.Length); Equal(track,roundTrip[0]);
+ var camelAccount=System.Text.Json.JsonSerializer.Deserialize("""{"id":123,"name":"测试","avatar":"","level":6,"isVip":true}""",BiliPlayJsonContext.Default.Account)!;
+ Equal(123L,camelAccount.Id); Equal("测试",camelAccount.Name); Equal(6,camelAccount.Level); True(camelAccount.IsVip);
+ var camelRequest=System.Text.Json.JsonSerializer.Deserialize("""{"op":"resolve","input":"BV1xx411c7mD","preferHiRes":false,"proxy":false,"lyrics":false}""",BiliPlayJsonContext.Default.ResolverRequest)!;
+ Equal("resolve",camelRequest.Op); Equal("BV1xx411c7mD",camelRequest.Input); True(!camelRequest.PreferHiRes&&!camelRequest.Proxy&&!camelRequest.Lyrics);
+});
+tests.Add(("Native AOT MusicResolver resolves tracks, lyrics, loopback proxy streams and stdio JSON protocol",async()=>
+{
+ var audioBytes="RIFF-mock-flac-payload"u8.ToArray();
+ var failSubtitles=false;
+ var vip=true;
+ HttpResponseMessage Respond(HttpRequestMessage request)
+ {
+  var path=request.RequestUri!.AbsolutePath;
+  if(path.EndsWith("/nav")) return Json(vip?account.Replace("\"isLogin\":true","\"isLogin\":true,\"vipStatus\":1"):account);
+  if(path.EndsWith("/view")) return Json("""{"code":0,"data":{"aid":99,"bvid":"BV1xx411c7mD","title":"English Song 《Yesterday》","pic":"https://i0.hdslb.com/a.jpg","duration":180,"owner":{"mid":7,"name":"Singer"},"pages":[{"cid":555,"page":1,"part":"Main","duration":180},{"cid":556,"page":2,"part":"Instrumental","duration":180}]}}""");
+  if(path.EndsWith("/playurl")) return Json(vip
+   ? """{"code":0,"data":{"dash":{"audio":[{"id":30280,"baseUrl":"https://upos.bilivideo.com/std.m4s","codecs":"mp4a.40.2","mimeType":"audio/mp4","bandwidth":192000}],"flac":{"display":true,"audio":{"id":30251,"baseUrl":"https://upos.bilivideo.com/hires.flac","codecs":"fLaC","mimeType":"audio/flac","bandwidth":960000}}}}}"""
+   : """{"code":0,"data":{"dash":{"audio":[{"id":30280,"baseUrl":"https://upos.bilivideo.com/std.m4s","codecs":"mp4a.40.2","mimeType":"audio/mp4","bandwidth":192000}],"flac":{"display":true,"audio":{}}}}}""");
+  if(path=="/x/player/wbi/v2")
+  {
+   if(failSubtitles) return new(HttpStatusCode.InternalServerError);
+   return Json("""{"code":0,"data":{"subtitle":{"subtitles":[{"lan":"ai-en","lan_doc":"英语","subtitle_url":"//i0.hdslb.com/bfs/subtitle/en.json","ai_type":1}]}}}""");
+  }
+  if(path.EndsWith("/en.json")) return Json("""{"body":[{"from":1.0,"to":4.0,"content":"♪ yesterday all my troubles seemed so far away ♪"}]}""");
+  if(path=="/x/space/wbi/arc/search") return Json("""{"code":0,"data":{"list":{"vlist":[]},"page":{"count":0}}}""");
+  if(path=="/x/web-interface/wbi/search/type") return Json("""{"code":0,"data":{"numPages":1,"result":[{"aid":99,"bvid":"BV1xx411c7mD","title":"Yesterday","author":"Singer","mid":7,"pic":"//i0.hdslb.com/a.jpg","duration":"03:00"}]}}""");
+  if(path.EndsWith(".flac")||path.EndsWith(".m4s"))
+  {
+   var resp=new HttpResponseMessage(HttpStatusCode.OK){Content=new ByteArrayContent(audioBytes)};
+   resp.Content.Headers.ContentType=new("audio/flac");
+   return resp;
+  }
+  return Json("""{"code":0,"data":{}}""");
+ }
+ using var resolver=new MusicResolver(new BilibiliClient(new Handler(Respond)),()=>new AudioProxy(new Handler(Respond)));
+ var input=new StringReader("\uFEFF" + """
+  {"op":"session","cookies":[{"Name":"SESSDATA","Value":"v","Domain":".bilibili.com","Path":"/","Expires":"2099-01-01T00:00:00Z"}]}
+  {"op":"resolve","input":"https://www.bilibili.com/video/BV1xx411c7mD/?p=2","preferHiRes":true,"proxy":true,"lyrics":true}
+  {"op":"resolve","input":"https://evil.test/video/BV1xx411c7mD"}
+  {"op":"resolve","input":"https://www.bilibili.com/video/BV1xx411c7mD/?p=99"}
+  {"op":"search","keyword":"Yesterday","page":1}
+  {"op":"search","keyword":"   "}
+  {"op":"unknown_command"}
+  not-valid-json
+  {"op":"stop"}
+  {"op":"quit"}
+  """);
+ var output=new StringWriter();
+ await resolver.RunStdioAsync(input,output);
+ var lines=output.ToString().Split('\n',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries);
+ Equal(10,lines.Length);
+ var sessionResp=System.Text.Json.JsonSerializer.Deserialize(lines[0],BiliPlayJsonContext.Default.ResolverResponse)!;
+ True(sessionResp.Ok&&sessionResp.Account is { Id:123,IsVip:true });
+ var resolveResp=System.Text.Json.JsonSerializer.Deserialize(lines[1],BiliPlayJsonContext.Default.ResolverResponse)!;
+ True(resolveResp.Ok&&resolveResp.Resolved is not null);
+ Equal(556L,resolveResp.Resolved!.Track.Cid);
+ Equal("Hi-Res 无损",resolveResp.Resolved.Quality);
+ True(resolveResp.Resolved.HasHiRes);
+ Equal("ai-en",resolveResp.Resolved.SelectedSubtitleLanguage);
+ Equal(1,resolveResp.Resolved.Lyrics.Count);
+ Equal("Yesterday all my troubles seemed so far away",resolveResp.Resolved.Lyrics[0].Content);
+ True(resolveResp.Resolved.ProxyUrl is { } proxyUrl && proxyUrl.StartsWith("http://127.0.0.1:",StringComparison.Ordinal));
+ using(var http=new HttpClient())
+ {
+  var afterQuit=await http.GetAsync(resolveResp.Resolved.ProxyUrl);
+  Equal(HttpStatusCode.NotFound,afterQuit.StatusCode);
+  var liveResolved=await resolver.ResolveAsync("BV1xx411c7mD",preferHiRes:true,startProxy:true,includeLyrics:false);
+  var relayed=await http.GetByteArrayAsync(liveResolved.ProxyUrl);
+  True(relayed.SequenceEqual(audioBytes));
+  resolver.StopProxy();
+  Equal(HttpStatusCode.NotFound,(await http.GetAsync(liveResolved.ProxyUrl)).StatusCode);
+ }
+ var badHostResp=System.Text.Json.JsonSerializer.Deserialize(lines[2],BiliPlayJsonContext.Default.ResolverResponse)!;
+ True(!badHostResp.Ok&&badHostResp.Op=="resolve");
+ var badPartResp=System.Text.Json.JsonSerializer.Deserialize(lines[3],BiliPlayJsonContext.Default.ResolverResponse)!;
+ True(!badPartResp.Ok&&badPartResp.Op=="resolve");
+ var searchResp=System.Text.Json.JsonSerializer.Deserialize(lines[4],BiliPlayJsonContext.Default.ResolverResponse)!;
+ True(searchResp.Ok&&searchResp.Search is { Items.Count:1 });
+ var emptySearchResp=System.Text.Json.JsonSerializer.Deserialize(lines[5],BiliPlayJsonContext.Default.ResolverResponse)!;
+ True(!emptySearchResp.Ok&&emptySearchResp.Op=="search");
+ var unknownOpResp=System.Text.Json.JsonSerializer.Deserialize(lines[6],BiliPlayJsonContext.Default.ResolverResponse)!;
+ True(!unknownOpResp.Ok&&unknownOpResp.Op=="unknown_command");
+ var invalidResp=System.Text.Json.JsonSerializer.Deserialize(lines[7],BiliPlayJsonContext.Default.ResolverResponse)!;
+ True(!invalidResp.Ok&&invalidResp.Op=="invalid");
+ var stopResp=System.Text.Json.JsonSerializer.Deserialize(lines[8],BiliPlayJsonContext.Default.ResolverResponse)!;
+ True(stopResp.Ok&&stopResp.Op=="stop");
+ var quitResp=System.Text.Json.JsonSerializer.Deserialize(lines[9],BiliPlayJsonContext.Default.ResolverResponse)!;
+ True(quitResp.Ok&&quitResp.Op=="quit");
+ failSubtitles=true; vip=false;
+ await resolver.Client.GetAccountAsync();
+ var cliOut=new StringWriter();var cliErr=new StringWriter();
+ Equal(0,await resolver.RunCliAsync(["resolve","BV1xx411c7mD"],TextReader.Null,cliOut,cliErr));
+ var cliResolved=System.Text.Json.JsonSerializer.Deserialize(cliOut.ToString().Trim(),BiliPlayJsonContext.Default.ResolverResponse)!;
+ True(cliResolved.Ok&&cliResolved.Resolved is { Quality:"标准",HasHiRes:true,ProxyUrl:null }&&cliResolved.Resolved.Lyrics.Count==0);
 }));
 
 tests.Add(("Comment images parse on roots and replies and reject unsafe URLs",async()=>
